@@ -18,6 +18,19 @@ module Positron
     , bigserial
     , varchar
     , (./)
+
+    -- re-export data types
+    , Int16
+    , Int32
+    , Int64
+    , Scientific
+    , Float
+    , Double
+    , Word16
+    , Word32
+    , Word64
+    , ByteString
+
     ) where
 
 -- base modules
