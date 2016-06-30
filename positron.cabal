@@ -15,9 +15,15 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib
-  build-depends:       base >= 4.7 && < 5
+  exposed-modules:     Positron
+  build-depends:
+    bytestring >= 0.10.6.0 && < 0.11,
+    scientific >= 0.3.4.7 && < 0.4,
+    template-haskell >= 2.10.0.0 && < 3,
+    base >= 4.7 && < 5
   default-language:    Haskell2010
+  default-extensions:
+    OverloadedStrings
 
 test-suite positron-test
   type:                exitcode-stdio-1.0
