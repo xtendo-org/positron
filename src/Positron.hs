@@ -1,4 +1,5 @@
 {-# language TemplateHaskell #-}
+{-# language RecordWildCards #-}
 
 module Positron
     ( table
@@ -42,26 +43,30 @@ import Positron.Alias
 import Positron.Types
 import Positron.Unsafe
 
+data AnalyzedColumn = AC
+    { acn :: {-# UNPACK #-} !String -- column name
+    , act :: {-# UNPACK #-} !DBColumnType
+    , acp :: {-# UNPACK #-} !Bool -- primary key?
+    , acf :: {-# UNPACK #-} !(Maybe (String, String)) -- foreign key?
+    }
+
 table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
-    cols <- mapM inspect pcols
-    addTableMap tabName [(n, t) | (n, t, _) <- cols]
+    cols <- mapM analyze pcols
+    addTableMap tabName [(acn, act) | AC{..} <- cols]
     let
         cqName = mkName $ "create" ++ capTbName
         cqSigDec = SigD cqName (ConT ''ByteString)
-        recs = flip map cols $ \(n, t, _) ->
-            (mkName $ tabName ++ cap n, Unpacked, columnTypeCon t)
-        primaryKeys = map (\(n, _, _) -> n) $
-            filter (\(_, _, p) -> Primary `elem` p) cols
+        recs = for cols $ \AC{..} ->
+            (mkName $ tabName ++ cap acn, Unpacked, columnTypeCon act)
+        primaryKeys = map acn $ filter acp cols
         foreignKeys = gatherFKs cols
         createQuery = concat
             [ "CREATE TABLE "
             , tabName
             , " (\n    "
-            , concat
-                [ n ++ " " ++ columnTypeStmt dt ++ ",\n    "
-                | (n, dt, _) <- cols
-                ]
+            , concat $ for cols $ \AC{..} ->
+                acn ++ " " ++ columnTypeStmt act ++ ",\n    "
             , "PRIMARY KEY ("
             , intercalate ", " primaryKeys
             , ")"
@@ -83,22 +88,16 @@ table tabName pcols = do
     cap [] = []
     cap (c : cs) = toUpper c : cs
     gatherFKs [] = []
-    gatherFKs ((n, _, ps) : cs) = case getFK ps of
-        Just (tn, cn) -> fmtFK n tn cn : gatherFKs cs
+    gatherFKs (AC{..} : cs) = case acf of
+        Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
         Nothing -> gatherFKs cs
-      where
-        getFK :: [ColumnProp] -> Maybe (String, String)
-        getFK [] = Nothing
-        getFK (p : _) = case p of
-            ForeignKey tn cn -> Just (tn, cn)
-            _ -> Nothing
 
 fmtFK :: String -> String -> String -> String
 fmtFK n t c = concat
     ["FOREIGN KEY(", n, ") REFERENCES ", t, " (", c, ")"]
 
-inspect :: Column -> Q (String, DBColumnType, [ColumnProp])
-inspect (Column n t p) = case t of
+analyze :: Column -> Q AnalyzedColumn
+analyze (Column n t pk) = case t of
     Psmallint -> ret DBsmallint
     Pinteger -> ret DBinteger
     Pbigint -> ret DBbigint
@@ -112,14 +111,14 @@ inspect (Column n t p) = case t of
     Pvarchar len -> ret $ DBvarchar len
     Pforeignkey s -> do
         let
-            (tabName, dottedColName) = break (== '.') s
-            colName = tail dottedColName
-        lookupTableMap tabName colName >>= \r -> case r of
+            (tn, dottedColName) = break (== '.') s
+            cn = tail dottedColName
+        lookupTableMap tn cn >>= \r -> case r of
             Nothing -> fail $ concat
-                ["Column ", colName, " of Table ", tabName, " not found"]
-            Just x -> return (n, x, ForeignKey tabName colName : p)
+                ["Column ", cn, " of Table ", tn, " not found"]
+            Just dt -> return $ AC n dt pk (Just (tn, cn))
   where
-    ret dt = return (n, dt, p)
+    ret dt = return (AC n dt pk Nothing)
 
 columnTypeCon :: DBColumnType -> Type
 columnTypeCon t = ConT $ case t of
@@ -148,3 +147,8 @@ columnTypeStmt t = case t of
     DBserial -> "serial"
     DBbigserial -> "bigserial"
     DBvarchar len -> "varchar(" ++ show len ++ ")"
+
+-- utility functions
+
+for :: [a] -> (a -> b) -> [b]
+for = flip map

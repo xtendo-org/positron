@@ -14,7 +14,7 @@ import Data.String
 data Column = Column
     { columnName :: String
     , columnType :: ColumnType
-    , columnProps :: [ColumnProp]
+    , columnPrimary :: Bool
     } deriving Show
 
 data ColumnType
@@ -61,18 +61,18 @@ instance Show ColumnType where
 
 data ColumnProp
     = Primary
-    | ForeignKey String String
-    deriving (Eq, Show)
+    deriving Show
 
 class Property v p | v -> p, p -> v where
     (./) :: v -> p -> v
 
 instance Property Column ColumnProp where
-    f ./ p = f { columnProps = p : columnProps f }
+    c ./ p = case p of
+        Primary -> c { columnPrimary = True }
 
 instance IsString (ColumnType -> Column) where
     fromString s t = Column
         { columnName = s
         , columnType = t
-        , columnProps = []
+        , columnPrimary = False
         }
