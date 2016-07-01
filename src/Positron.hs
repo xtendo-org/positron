@@ -24,7 +24,6 @@ module Positron
 
 -- base modules
 
-import Control.Monad
 import Data.Char (toUpper)
 import Data.Int
 import Data.List
@@ -44,21 +43,24 @@ import Positron.Types
 import Positron.Unsafe
 
 table :: String -> [Column] -> Q [Dec]
-table tbName pcols = do
-    cols <- forM pcols $ \(Column n t p) ->
-        inspect t >>= \dt -> return (n, dt, p)
-    runIO $ addTableMap tbName [(n, t) | (n, t, _) <- cols]
+table tabName pcols = do
+    cols <- mapM inspect pcols
+    addTableMap tabName [(n, t) | (n, t, _) <- cols]
     let
         cqName = mkName $ "create" ++ capTbName
         cqSigDec = SigD cqName (ConT ''ByteString)
         recs = flip map cols $ \(n, t, _) ->
-            (mkName $ tbName ++ cap n, Unpacked, columnTypeCon t)
-        (colStmts, pks) = analyzeCols pcols
+            (mkName $ tabName ++ cap n, Unpacked, columnTypeCon t)
+        pks = map (\(n, _, _) -> n) $
+            filter (\(_, _, p) -> Primary `elem` p) cols
         createQuery = concat
             [ "CREATE TABLE "
-            , tbName
+            , tabName
             , " (\n    "
-            , concatMap (++ ",\n    ") colStmts
+            , concat
+                [ n ++ " " ++ columnTypeStmt dt ++ ",\n    "
+                | (n, dt, _) <- cols
+                ]
             , "PRIMARY KEY ("
             , intercalate ", " pks
             , ")\n);\n"
@@ -71,33 +73,34 @@ table tbName pcols = do
         , cqValDec
         ]
   where
-    capTbName = cap tbName
+    capTbName = cap tabName
     dataName = mkName capTbName
     cap [] = []
     cap (c : cs) = toUpper c : cs
 
-analyzeCols :: [Column] -> ([String], [String])
-analyzeCols [] = ([], [])
-analyzeCols (Column n t p : cs) = if Primary `elem` p
-    then (newColStmts, n : pks)
-    else (newColStmts, pks)
+inspect :: Column -> Q (String, DBColumnType, [ColumnProp])
+inspect (Column n t p) = case t of
+    Psmallint -> ret DBsmallint
+    Pinteger -> ret DBinteger
+    Pbigint -> ret DBbigint
+    Pdecimal -> ret DBdecimal
+    Pnumeric -> ret DBnumeric
+    Preal -> ret DBreal
+    Pdouble -> ret DBdouble
+    Psmallserial -> ret DBsmallserial
+    Pserial -> ret DBserial
+    Pbigserial -> ret DBbigserial
+    Pvarchar len -> ret $ DBvarchar len
+    Pforeignkey s -> do
+        let
+            (tabName, dottedColName) = break (== '.') s
+            colName = tail dottedColName
+        lookupTableMap tabName colName >>= \r -> case r of
+            Nothing -> fail $ concat
+                ["Column ", colName, " of Table ", tabName, " not found"]
+            Just x -> return (n, x, ForeignKey tabName colName : p)
   where
-    newColStmts = concat [n, " ", show t] : colStmts
-    (colStmts, pks) = analyzeCols cs
-
-inspect :: ColumnType -> Q DBColumnType
-inspect pct = case pct of
-    Psmallint -> return DBsmallint
-    Pinteger -> return DBinteger
-    Pbigint -> return DBbigint
-    Pdecimal -> return DBdecimal
-    Pnumeric -> return DBnumeric
-    Preal -> return DBreal
-    Pdouble -> return DBdouble
-    Psmallserial -> return DBsmallserial
-    Pserial -> return DBserial
-    Pbigserial -> return DBbigserial
-    Pvarchar n -> return $ DBvarchar n
+    ret dt = return (n, dt, p)
 
 columnTypeCon :: DBColumnType -> Type
 columnTypeCon t = ConT $ case t of
@@ -112,3 +115,17 @@ columnTypeCon t = ConT $ case t of
     DBserial -> ''Word32
     DBbigserial -> ''Word64
     DBvarchar _ -> ''ByteString
+
+columnTypeStmt :: DBColumnType -> String
+columnTypeStmt t = case t of
+    DBsmallint -> "smallint"
+    DBinteger -> "integer"
+    DBbigint -> "bigint"
+    DBdecimal -> "decimal"
+    DBnumeric -> "numeric"
+    DBreal -> "real"
+    DBdouble -> "double"
+    DBsmallserial -> "smallserial"
+    DBserial -> "serial"
+    DBbigserial -> "bigserial"
+    DBvarchar len -> "varchar(" ++ show len ++ ")"

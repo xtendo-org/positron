@@ -2,12 +2,18 @@ module Positron.Unsafe
     ( TableMap
     , ColumnMap
     , addTableMap
+    , lookupTableMap
     ) where
 
 -- base modules
 
+import Control.Monad
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
+
+-- extra modules
+
+import Language.Haskell.TH (Q, runIO)
 
 -- local modules
 
@@ -20,17 +26,12 @@ type TableMap = [(String, ColumnMap)]
 tableMap :: IORef TableMap
 tableMap = unsafePerformIO $ newIORef []
 
-addTableMap :: String -> ColumnMap -> IO ()
-addTableMap key value = modifyIORef tableMap (modify key (const value))
+addTableMap :: String -> ColumnMap -> Q ()
+addTableMap key value = runIO $ modifyIORef tableMap (set key value)
 
--- lookupTableMap :: String -> String -> IO (Maybe DBColumnType)
+lookupTableMap :: String -> String -> Q (Maybe DBColumnType)
+lookupTableMap tabName colName = runIO $
+    (lookup tabName >=> lookup colName) <$> readIORef tableMap
 
-modify :: Eq k => k -> (v -> v) -> [(k, v)] -> [(k, v)]
-modify k f kmap = case lookup k kmap of
-    Just v -> (k, f v) : filter (\(k1, _) -> k1 /= k) kmap
-    Nothing -> kmap
-
-add :: Eq k => k -> v -> [(k, [v])] -> [(k, [v])]
-add k v kmap = case lookup k kmap of
-    Just vs -> (k, v : vs) : filter (\(k1, _) -> k1 /= k) kmap
-    Nothing -> (k, [v]) : kmap
+set :: Eq k => k -> v -> [(k, v)] -> [(k, v)]
+set k v kmap = (k, v) : filter (\(k1, _) -> k1 /= k) kmap

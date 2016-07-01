@@ -29,7 +29,7 @@ data ColumnType
     | Pserial
     | Pbigserial
     | Pvarchar Integer
-    -- | Pforeignkey String
+    | Pforeignkey String
 
 data DBColumnType
     = DBsmallint
@@ -57,10 +57,11 @@ instance Show ColumnType where
         Pserial -> "serial"
         Pbigserial -> "bigserial"
         Pvarchar n -> "varchar(" ++ show n ++ ")"
+        Pforeignkey s -> "foreignkey (" ++ s ++ ")"
 
 data ColumnProp
     = Primary
-    -- | ForeignKey String
+    | ForeignKey String String
     deriving (Eq, Show)
 
 class Property v p | v -> p, p -> v where
@@ -75,4 +76,3 @@ instance IsString (ColumnType -> Column) where
         , columnType = t
         , columnProps = []
         }
-
