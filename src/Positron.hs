@@ -68,8 +68,11 @@ table tabName pcols = do
             [ "CREATE TABLE "
             , snakeTabName
             , " (\n    "
-            , concat $ for cols $ \AC{..} ->
-                lowerSnake acn ++ " " ++ columnTypeStmt act ++ ",\n    "
+            , concat $ for cols $ \AC{..} -> concat
+                [ lowerSnake acn, " ", columnTypeStmt act
+                , if acnl then " NULL" else " NOT NULL"
+                , ",\n    "
+                ]
             , "PRIMARY KEY ("
             , intercalate ", " primaryKeys
             , ")"
