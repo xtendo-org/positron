@@ -16,6 +16,10 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Positron
+  other-modules:
+    Positron.Alias
+    Positron.Types
+    Positron.Unsafe
   build-depends:
     bytestring >= 0.10.6.0 && < 0.11,
     scientific >= 0.3.4.7 && < 0.4,

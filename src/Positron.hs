@@ -24,6 +24,7 @@ module Positron
 
 -- base modules
 
+import Control.Monad
 import Data.Char (toUpper)
 import Data.Int
 import Data.List
@@ -42,6 +43,62 @@ import Positron.Alias
 import Positron.Types
 import Positron.Unsafe
 
+table :: String -> [Column] -> Q [Dec]
+table tbName pcols = do
+    cols <- forM pcols $ \(Column n t p) ->
+        inspect t >>= \dt -> return (n, dt, p)
+    runIO $ addTableMap tbName [(n, t) | (n, t, _) <- cols]
+    let
+        cqName = mkName $ "create" ++ capTbName
+        cqSigDec = SigD cqName (ConT ''ByteString)
+        recs = flip map cols $ \(n, t, _) ->
+            (mkName $ tbName ++ cap n, Unpacked, columnTypeCon t)
+        (colStmts, pks) = analyzeCols pcols
+        createQuery = concat
+            [ "CREATE TABLE "
+            , tbName
+            , " (\n    "
+            , concatMap (++ ",\n    ") colStmts
+            , "PRIMARY KEY ("
+            , intercalate ", " pks
+            , ")\n);\n"
+            ]
+    cqExp <- [| pack $(return $ LitE $ StringL createQuery) |]
+    let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
+    return
+        [ DataD [] dataName [] [RecC dataName recs] []
+        , cqSigDec
+        , cqValDec
+        ]
+  where
+    capTbName = cap tbName
+    dataName = mkName capTbName
+    cap [] = []
+    cap (c : cs) = toUpper c : cs
+
+analyzeCols :: [Column] -> ([String], [String])
+analyzeCols [] = ([], [])
+analyzeCols (Column n t p : cs) = if Primary `elem` p
+    then (newColStmts, n : pks)
+    else (newColStmts, pks)
+  where
+    newColStmts = concat [n, " ", show t] : colStmts
+    (colStmts, pks) = analyzeCols cs
+
+inspect :: ColumnType -> Q DBColumnType
+inspect pct = case pct of
+    Psmallint -> return DBsmallint
+    Pinteger -> return DBinteger
+    Pbigint -> return DBbigint
+    Pdecimal -> return DBdecimal
+    Pnumeric -> return DBnumeric
+    Preal -> return DBreal
+    Pdouble -> return DBdouble
+    Psmallserial -> return DBsmallserial
+    Pserial -> return DBserial
+    Pbigserial -> return DBbigserial
+    Pvarchar n -> return $ DBvarchar n
+
 columnTypeCon :: DBColumnType -> Type
 columnTypeCon t = ConT $ case t of
     DBsmallint -> ''Int16
@@ -55,46 +112,3 @@ columnTypeCon t = ConT $ case t of
     DBserial -> ''Word32
     DBbigserial -> ''Word64
     DBvarchar _ -> ''ByteString
-
-table :: String -> [Column] -> Q [Dec]
-table tbName cols = do
-    cqExp <- [| pack $(return $ LitE $ StringL createQuery) |]
-    let
-        cqName = mkName $ "create" ++ capTbName
-        cqSigDec = SigD cqName (ConT ''ByteString)
-        cqValDec = ValD (VarP cqName) (NormalB cqExp) []
-    return
-        [ DataD [] dataName [] [RecC dataName (map col cols)] []
-        , cqSigDec
-        , cqValDec
-        ]
-  where
-    capTbName = cap tbName
-    dataName = mkName $ capTbName
-    col (Column n t _) =
-        ( mkName $ tbName ++ cap n
-        , Unpacked
-        , columnTypeCon $ inspect t
-        )
-    cap [] = []
-    cap (c : cs) = toUpper c : cs
-    createQuery = concat
-        [ "CREATE TABLE "
-        , tbName
-        , " (\n    "
-        , concat $ map (++ ",\n    ") colStmts
-        , "PRIMARY KEY ("
-        , intercalate ", " $ pks
-        , ")\n);\n"
-        ]
-    (colStmts, pks) = analyzeCols cols
-
-
-analyzeCols :: [Column] -> ([String], [String])
-analyzeCols [] = ([], [])
-analyzeCols (Column n t p : cs) = if Primary `elem` p
-    then (newColStmts, n : pks)
-    else (newColStmts, pks)
-  where
-    newColStmts = concat [n, " ", show t] : colStmts
-    (colStmts, pks) = analyzeCols cs

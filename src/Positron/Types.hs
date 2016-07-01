@@ -70,7 +70,7 @@ instance Property Column ColumnProp where
     f ./ p = f { columnProps = p : columnProps f }
 
 instance IsString (ColumnType -> Column) where
-    fromString s = \t -> Column
+    fromString s t = Column
         { columnName = s
         , columnType = t
         , columnProps = []
