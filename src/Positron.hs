@@ -51,8 +51,9 @@ table tabName pcols = do
         cqSigDec = SigD cqName (ConT ''ByteString)
         recs = flip map cols $ \(n, t, _) ->
             (mkName $ tabName ++ cap n, Unpacked, columnTypeCon t)
-        pks = map (\(n, _, _) -> n) $
+        primaryKeys = map (\(n, _, _) -> n) $
             filter (\(_, _, p) -> Primary `elem` p) cols
+        foreignKeys = gatherFKs cols
         createQuery = concat
             [ "CREATE TABLE "
             , tabName
@@ -62,8 +63,12 @@ table tabName pcols = do
                 | (n, dt, _) <- cols
                 ]
             , "PRIMARY KEY ("
-            , intercalate ", " pks
-            , ")\n);\n"
+            , intercalate ", " primaryKeys
+            , ")"
+            , if foreignKeys /= []
+                then concatMap (",\n    " ++) foreignKeys
+                else ""
+            , "\n);\n"
             ]
     cqExp <- [| pack $(return $ LitE $ StringL createQuery) |]
     let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
@@ -77,6 +82,20 @@ table tabName pcols = do
     dataName = mkName capTbName
     cap [] = []
     cap (c : cs) = toUpper c : cs
+    gatherFKs [] = []
+    gatherFKs ((n, _, ps) : cs) = case getFK ps of
+        Just (tn, cn) -> fmtFK n tn cn : gatherFKs cs
+        Nothing -> gatherFKs cs
+      where
+        getFK :: [ColumnProp] -> Maybe (String, String)
+        getFK [] = Nothing
+        getFK (p : _) = case p of
+            ForeignKey tn cn -> Just (tn, cn)
+            _ -> Nothing
+
+fmtFK :: String -> String -> String -> String
+fmtFK n t c = concat
+    ["FOREIGN KEY(", n, ") REFERENCES ", t, " (", c, ")"]
 
 inspect :: Column -> Q (String, DBColumnType, [ColumnProp])
 inspect (Column n t p) = case t of
