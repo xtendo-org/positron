@@ -6,7 +6,7 @@ module Positron.Types
     , ColumnProp(..)
     , ColumnType(..)
     , DBColumnType(..)
-    , (./)
+    , (//)
     ) where
 
 import Data.String
@@ -15,6 +15,8 @@ data Column = Column
     { columnName :: String
     , columnType :: ColumnType
     , columnPrimary :: Bool
+    , columnIndexed :: Bool
+    , columnNullable :: Bool
     } deriving Show
 
 data ColumnType
@@ -61,18 +63,24 @@ instance Show ColumnType where
 
 data ColumnProp
     = Primary
+    | Indexed
+    | Nullable
     deriving Show
 
 class Property v p | v -> p, p -> v where
-    (./) :: v -> p -> v
+    (//) :: v -> p -> v
 
 instance Property Column ColumnProp where
-    c ./ p = case p of
+    c // p = case p of
         Primary -> c { columnPrimary = True }
+        Indexed -> c { columnIndexed = True }
+        Nullable -> c { columnNullable = True }
 
 instance IsString (ColumnType -> Column) where
     fromString s t = Column
         { columnName = s
         , columnType = t
         , columnPrimary = False
+        , columnIndexed = False
+        , columnNullable = False
         }

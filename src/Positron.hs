@@ -5,8 +5,8 @@ module Positron
     ( table
     , Column
     , ColumnType
-    , ColumnProp(Primary)
-    , (./)
+    , ColumnProp(..)
+    , (//)
     , module Positron.Alias
 
     -- re-export data types
@@ -25,7 +25,7 @@ module Positron
 
 -- base modules
 
-import Data.Char (toUpper)
+import Data.Char (isUpper, toUpper, toLower)
 import Data.Int
 import Data.List
 import Data.Scientific
@@ -45,8 +45,10 @@ import Positron.Unsafe
 
 data AnalyzedColumn = AC
     { acn :: {-# UNPACK #-} !String -- column name
-    , act :: {-# UNPACK #-} !DBColumnType
     , acp :: {-# UNPACK #-} !Bool -- primary key?
+    , aci :: {-# UNPACK #-} !Bool -- indexed?
+    , acnl :: {-# UNPACK #-} !Bool -- nullable?
+    , act :: {-# UNPACK #-} !DBColumnType
     , acf :: {-# UNPACK #-} !(Maybe (String, String)) -- foreign key?
     }
 
@@ -55,18 +57,19 @@ table tabName pcols = do
     cols <- mapM analyze pcols
     addTableMap tabName [(acn, act) | AC{..} <- cols]
     let
-        cqName = mkName $ "create" ++ capTbName
+        cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
         recs = for cols $ \AC{..} ->
             (mkName $ tabName ++ cap acn, Unpacked, columnTypeCon act)
-        primaryKeys = map acn $ filter acp cols
+        primaryKeys = map (lowerSnake . acn) $ filter acp cols
         foreignKeys = gatherFKs cols
+        indexedKeys = map (lowerSnake . acn) $ filter aci cols
         createQuery = concat
             [ "CREATE TABLE "
-            , tabName
+            , snakeTabName
             , " (\n    "
             , concat $ for cols $ \AC{..} ->
-                acn ++ " " ++ columnTypeStmt act ++ ",\n    "
+                lowerSnake acn ++ " " ++ columnTypeStmt act ++ ",\n    "
             , "PRIMARY KEY ("
             , intercalate ", " primaryKeys
             , ")"
@@ -74,6 +77,12 @@ table tabName pcols = do
                 then concatMap (",\n    " ++) foreignKeys
                 else ""
             , "\n);\n"
+            , if indexedKeys /= []
+                then concat $ for indexedKeys $ \colName -> concat
+                    [ "CREATE INDEX ix_", snakeTabName, "_", colName
+                    , " ON ", snakeTabName, " (", colName, ");\n"
+                    ]
+                else ""
             ]
     cqExp <- [| pack $(return $ LitE $ StringL createQuery) |]
     let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
@@ -83,8 +92,9 @@ table tabName pcols = do
         , cqValDec
         ]
   where
-    capTbName = cap tabName
-    dataName = mkName capTbName
+    snakeTabName = lowerSnake tabName
+    capTabName = cap tabName
+    dataName = mkName capTabName
     cap [] = []
     cap (c : cs) = toUpper c : cs
     gatherFKs [] = []
@@ -94,10 +104,12 @@ table tabName pcols = do
 
 fmtFK :: String -> String -> String -> String
 fmtFK n t c = concat
-    ["FOREIGN KEY(", n, ") REFERENCES ", t, " (", c, ")"]
+    [ "FOREIGN KEY(", lowerSnake n, ") REFERENCES "
+    , lowerSnake t, " (", lowerSnake c, ")"
+    ]
 
 analyze :: Column -> Q AnalyzedColumn
-analyze (Column n t pk) = case t of
+analyze (Column n t pk idx nl) = case t of
     Psmallint -> ret DBsmallint
     Pinteger -> ret DBinteger
     Pbigint -> ret DBbigint
@@ -115,10 +127,11 @@ analyze (Column n t pk) = case t of
             cn = tail dottedColName
         lookupTableMap tn cn >>= \r -> case r of
             Nothing -> fail $ concat
-                ["Column ", cn, " of Table ", tn, " not found"]
-            Just dt -> return $ AC n dt pk (Just (tn, cn))
+                ["Column \"", cn, "\" of Table \"", tn, "\" not found"]
+            Just dt -> return $ acBase dt (Just (tn, cn))
   where
-    ret dt = return (AC n dt pk Nothing)
+    ret dt = return (acBase dt Nothing)
+    acBase = AC n pk idx nl
 
 columnTypeCon :: DBColumnType -> Type
 columnTypeCon t = ConT $ case t of
@@ -152,3 +165,9 @@ columnTypeStmt t = case t of
 
 for :: [a] -> (a -> b) -> [b]
 for = flip map
+
+lowerSnake :: String -> String
+lowerSnake [] = []
+lowerSnake (x : xs)
+    | isUpper x = '_' : toLower x : lowerSnake xs
+    | otherwise = x : lowerSnake xs
