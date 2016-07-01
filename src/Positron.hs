@@ -145,7 +145,7 @@ instance IsString (ColumnType -> Column) where
 
 data ColumnProp
     = PrimaryKey
-    deriving Show
+    deriving (Eq, Show)
 
 instance Lift ColumnProp where
     lift p = return $ ConE $ case p of
@@ -179,7 +179,19 @@ table tbName cols = do
         [ "CREATE TABLE "
         , tbName
         , " (\n    "
-        , intercalate ",\n    " (map field cols)
-        , "\n);\n"
+        , concat $ map (++ ",\n    ") colStmts
+        , "PRIMARY KEY ("
+        , intercalate ", " $ pks
+        , ")\n);\n"
         ]
-    field (Column n t _) = concat [n, " ", show t]
+    (colStmts, pks) = analyzeCols cols
+
+
+analyzeCols :: [Column] -> ([String], [String])
+analyzeCols [] = ([], [])
+analyzeCols (Column n t p : cs) = if PrimaryKey `elem` p
+    then (newColStmts, n : pks)
+    else (newColStmts, pks)
+  where
+    newColStmts = concat [n, " ", show t] : colStmts
+    (colStmts, pks) = analyzeCols cs
