@@ -44,12 +44,12 @@ import Positron.Types
 import Positron.Unsafe
 
 data AnalyzedColumn = AC
-    { acn :: {-# UNPACK #-} !String -- column name
-    , acp :: {-# UNPACK #-} !Bool -- primary key?
-    , aci :: {-# UNPACK #-} !Bool -- indexed?
-    , acnl :: {-# UNPACK #-} !Bool -- nullable?
-    , act :: {-# UNPACK #-} !DBColumnType
-    , acf :: {-# UNPACK #-} !(Maybe (String, String)) -- foreign key?
+    { acn :: !String -- column name
+    , acp :: !Bool -- primary key?
+    , aci :: !Bool -- indexed?
+    , acnl :: !Bool -- nullable?
+    , act :: !DBColumnType
+    , acf :: !(Maybe (String, String)) -- foreign key?
     }
 
 table :: String -> [Column] -> Q [Dec]
