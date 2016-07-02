@@ -10,6 +10,7 @@ module Positron.Alias
     , bigserial
     , varchar
     , foreignkey
+    , text
     ) where
 
 import Positron.Types
@@ -36,3 +37,5 @@ varchar :: Integer -> ColumnType
 varchar = Pvarchar
 foreignkey :: String -> ColumnType
 foreignkey = Pforeignkey
+text :: ColumnType
+text = Ptext

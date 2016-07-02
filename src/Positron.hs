@@ -69,7 +69,7 @@ table tabName pcols = do
             , snakeTabName
             , " (\n    "
             , concat $ for cols $ \AC{..} -> concat
-                [ lowerSnake acn, " ", columnTypeStmt act
+                [ lowerSnake acn, " ", show act
                 , if acnl then " NULL" else " NOT NULL"
                 , ",\n    "
                 ]
@@ -124,6 +124,7 @@ analyze (Column n t pk idx nl) = case t of
     Pserial -> ret DBserial
     Pbigserial -> ret DBbigserial
     Pvarchar len -> ret $ DBvarchar len
+    Ptext -> ret DBtext
     Pforeignkey s -> do
         let
             (tn, dottedColName) = break (== '.') s
@@ -149,20 +150,7 @@ columnTypeCon t = ConT $ case t of
     DBserial -> ''Word32
     DBbigserial -> ''Word64
     DBvarchar _ -> ''ByteString
-
-columnTypeStmt :: DBColumnType -> String
-columnTypeStmt t = case t of
-    DBsmallint -> "smallint"
-    DBinteger -> "integer"
-    DBbigint -> "bigint"
-    DBdecimal -> "decimal"
-    DBnumeric -> "numeric"
-    DBreal -> "real"
-    DBdouble -> "double"
-    DBsmallserial -> "smallserial"
-    DBserial -> "serial"
-    DBbigserial -> "bigserial"
-    DBvarchar len -> "varchar(" ++ show len ++ ")"
+    DBtext -> ''ByteString
 
 -- utility functions
 

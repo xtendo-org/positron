@@ -31,7 +31,9 @@ data ColumnType
     | Pserial
     | Pbigserial
     | Pvarchar Integer
+    | Ptext
     | Pforeignkey String
+    deriving Show
 
 data DBColumnType
     = DBsmallint
@@ -44,22 +46,23 @@ data DBColumnType
     | DBsmallserial
     | DBserial
     | DBbigserial
+    | DBtext
     | DBvarchar Integer
 
-instance Show ColumnType where
+instance Show DBColumnType where
     show t = case t of
-        Psmallint -> "smallint"
-        Pinteger -> "integer"
-        Pbigint -> "bigint"
-        Pdecimal -> "decimal"
-        Pnumeric -> "numeric"
-        Preal -> "real"
-        Pdouble -> "double"
-        Psmallserial -> "smallserial"
-        Pserial -> "serial"
-        Pbigserial -> "bigserial"
-        Pvarchar n -> "varchar(" ++ show n ++ ")"
-        Pforeignkey s -> "foreignkey (" ++ s ++ ")"
+        DBsmallint -> "smallint"
+        DBinteger -> "integer"
+        DBbigint -> "bigint"
+        DBdecimal -> "decimal"
+        DBnumeric -> "numeric"
+        DBreal -> "real"
+        DBdouble -> "double"
+        DBsmallserial -> "smallserial"
+        DBserial -> "serial"
+        DBbigserial -> "bigserial"
+        DBvarchar len -> "varchar(" ++ show len ++ ")"
+        DBtext -> "text"
 
 data ColumnProp
     = Primary
