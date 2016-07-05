@@ -75,8 +75,8 @@ table tabName pcols = do
     let
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
-        recs = for cols $ \AC{..} ->
-            (mkName $ tabName ++ cap acn, Unpacked, columnTypeCon act)
+        recs = for cols $ \ac@AC{..} ->
+            (mkName $ tabName ++ cap acn, Unpacked, columnTypeCon ac)
         primaryKeys = map (lowerSnake . acn) $ filter acp cols
         foreignKeys = gatherFKs cols
         indexedKeys = map (lowerSnake . acn) $ filter aci cols
@@ -152,8 +152,8 @@ analyze (Column n t pk idx nl) = case t of
     ret dt = return (acBase dt Nothing)
     acBase = AC n pk idx nl
 
-columnTypeCon :: DBColumnType -> Type
-columnTypeCon t = ConT $ case t of
+columnTypeCon :: AnalyzedColumn -> Type
+columnTypeCon AC{..} = constructor $ case act of
     DBsmallint -> ''Int16
     DBinteger -> ''Int32
     DBbigint -> ''Int64
@@ -166,6 +166,10 @@ columnTypeCon t = ConT $ case t of
     DBbigserial -> ''Word64
     DBvarchar _ -> ''ByteString
     DBtext -> ''ByteString
+  where
+    constructor = if acnl
+        then AppT (ConT ''Maybe) . ConT
+        else ConT
 
 -- utility functions
 
