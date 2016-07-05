@@ -1,7 +1,8 @@
 module Positron.Unsafe
     ( TableMap
     , ColumnMap
-    , addTableMap
+    , addMap
+    , lookupColumn
     , lookupTableMap
     ) where
 
@@ -21,17 +22,25 @@ import Positron.Types
 
 type ColumnMap = [(String, DBColumnType)]
 type TableMap = [(String, ColumnMap)]
+type ModuleMap = [(String, TableMap)]
 
-{-# NOINLINE tableMap #-}
-tableMap :: IORef TableMap
-tableMap = unsafePerformIO $ newIORef []
+{-# NOINLINE moduleMap #-}
+moduleMap :: IORef ModuleMap
+moduleMap = unsafePerformIO $ newIORef []
 
-addTableMap :: String -> ColumnMap -> Q ()
-addTableMap key value = runIO $ modifyIORef tableMap (set key value)
+addMap :: String -> (String, ColumnMap) -> Q ()
+addMap modName tbMap = runIO $ modifyIORef moduleMap $
+    add modName tbMap
 
-lookupTableMap :: String -> String -> Q (Maybe DBColumnType)
-lookupTableMap tabName colName = runIO $
-    (lookup tabName >=> lookup colName) <$> readIORef tableMap
+lookupColumn :: String -> String -> String -> Q (Maybe DBColumnType)
+lookupColumn modName tabName colName = runIO $
+    (lookup modName >=> lookup tabName >=> lookup colName) <$>
+        readIORef moduleMap
 
-set :: Eq k => k -> v -> [(k, v)] -> [(k, v)]
-set k v kmap = (k, v) : filter (\(k1, _) -> k1 /= k) kmap
+lookupTableMap :: String -> Q (Maybe TableMap)
+lookupTableMap modName = runIO $ lookup modName <$> readIORef moduleMap
+
+add :: Eq k => k -> v -> [(k, [v])] -> [(k, [v])]
+add k v kmap = case lookup k kmap of
+    Just vs -> (k, v : vs) : filter (\(i, _) -> i /= k) kmap
+    Nothing -> (k, [v]) : kmap

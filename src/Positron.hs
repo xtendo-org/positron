@@ -8,6 +8,7 @@ module Positron
     , ColumnProp(..)
     , (//)
     , module Positron.Alias
+    , mkCreateAll
 
     -- re-export data types
     , Int16
@@ -52,10 +53,25 @@ data AnalyzedColumn = AC
     , acf :: !(Maybe (String, String)) -- foreign key?
     }
 
+mkCreateAll :: Q [Dec]
+mkCreateAll = do
+    thisModuleStr <- show <$> thisModule
+    lookupTableMap thisModuleStr >>= \mt -> case mt of
+        Nothing -> return []
+        Just tm -> [d|
+            createAll :: ByteString
+            createAll = mconcat $ reverse
+                $(return $
+                    ListE
+                        (map (VarE . mkName . ("create" ++) . cap . fst) tm)
+                )
+            |]
+
 table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
     cols <- mapM analyze pcols
-    addTableMap tabName [(acn, act) | AC{..} <- cols]
+    thisModuleStr <- show <$> thisModule
+    addMap thisModuleStr (tabName, [(acn, act) | AC{..} <- cols])
     let
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
@@ -98,8 +114,6 @@ table tabName pcols = do
     snakeTabName = lowerSnake tabName
     capTabName = cap tabName
     dataName = mkName capTabName
-    cap [] = []
-    cap (c : cs) = toUpper c : cs
     gatherFKs [] = []
     gatherFKs (AC{..} : cs) = case acf of
         Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
@@ -129,7 +143,8 @@ analyze (Column n t pk idx nl) = case t of
         let
             (tn, dottedColName) = break (== '.') s
             cn = tail dottedColName
-        lookupTableMap tn cn >>= \r -> case r of
+        thisModuleStr <- show <$> thisModule
+        lookupColumn thisModuleStr tn cn >>= \r -> case r of
             Nothing -> fail $ concat
                 ["Column \"", cn, "\" of Table \"", tn, "\" not found"]
             Just dt -> return $ acBase dt (Just (tn, cn))
@@ -162,3 +177,7 @@ lowerSnake [] = []
 lowerSnake (x : xs)
     | isUpper x = '_' : toLower x : lowerSnake xs
     | otherwise = x : lowerSnake xs
+
+cap :: String -> String
+cap [] = []
+cap (c : cs) = toUpper c : cs
