@@ -81,7 +81,7 @@ table tabName pcols = do
         foreignKeys = gatherFKs cols
         indexedKeys = map (lowerSnake . acn) $ filter aci cols
         createQuery = concat
-            [ "CREATE TABLE "
+            [ "CREATE TABLE IF NOT EXISTS "
             , snakeTabName
             , " (\n    "
             , concat $ for cols $ \AC{..} -> concat
@@ -98,7 +98,8 @@ table tabName pcols = do
             , "\n);\n"
             , if indexedKeys /= []
                 then concat $ for indexedKeys $ \colName -> concat
-                    [ "CREATE INDEX ix_", snakeTabName, "_", colName
+                    [ "CREATE INDEX IF NOT EXISTS ix_"
+                    , snakeTabName, "_", colName
                     , " ON ", snakeTabName, " (", colName, ");\n"
                     ]
                 else ""
