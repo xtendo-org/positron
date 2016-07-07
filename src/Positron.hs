@@ -148,10 +148,15 @@ analyze (Column n t pk idx nl) = case t of
         lookupColumn thisModuleStr tn cn >>= \r -> case r of
             Nothing -> fail $ concat
                 ["Column \"", cn, "\" of Table \"", tn, "\" not found"]
-            Just dt -> return $ acBase dt (Just (tn, cn))
+            Just dt -> return $ acBase (plain dt) (Just (tn, cn))
   where
     ret dt = return (acBase dt Nothing)
     acBase = AC n pk idx nl
+    plain dt = case dt of
+        DBsmallserial -> DBsmallint
+        DBserial -> DBinteger
+        DBbigserial -> DBbigint
+        x -> x
 
 columnTypeCon :: AnalyzedColumn -> Type
 columnTypeCon AC{..} = constructor $ case act of
@@ -162,9 +167,9 @@ columnTypeCon AC{..} = constructor $ case act of
     DBnumeric -> ''Scientific
     DBreal -> ''Float
     DBdouble -> ''Double
-    DBsmallserial -> ''Word16
-    DBserial -> ''Word32
-    DBbigserial -> ''Word64
+    DBsmallserial -> ''Int16
+    DBserial -> ''Int32
+    DBbigserial -> ''Int64
     DBvarchar _ -> ''ByteString
     DBtext -> ''ByteString
   where
