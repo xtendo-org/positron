@@ -4,6 +4,7 @@ module Positron.Unsafe
     , addMap
     , lookupColumn
     , lookupTableMap
+    , currentTableMap
     ) where
 
 -- base modules
@@ -14,7 +15,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 -- extra modules
 
-import Language.Haskell.TH (Q, runIO)
+import Language.Haskell.TH (Q, runIO, thisModule)
 
 -- local modules
 
@@ -39,6 +40,9 @@ lookupColumn modName tabName colName = runIO $
 
 lookupTableMap :: String -> Q (Maybe TableMap)
 lookupTableMap modName = runIO $ lookup modName <$> readIORef moduleMap
+
+currentTableMap :: Q (Maybe TableMap)
+currentTableMap = (show <$> thisModule) >>= lookupTableMap
 
 add :: Eq k => k -> v -> [(k, [v])] -> [(k, [v])]
 add k v kmap = case lookup k kmap of

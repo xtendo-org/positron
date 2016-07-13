@@ -1,5 +1,6 @@
 {-# language TemplateHaskell #-}
 {-# language RecordWildCards #-}
+{-# language LambdaCase #-}
 
 module Positron
     ( table
@@ -45,18 +46,16 @@ import Positron.Types
 import Positron.Unsafe
 
 mkCreateAll :: Q [Dec]
-mkCreateAll = do
-    thisModuleStr <- show <$> thisModule
-    lookupTableMap thisModuleStr >>= \mt -> case mt of
-        Nothing -> return []
-        Just tm -> [d|
-            createAll :: ByteString
-            createAll = mconcat $ reverse
-                $(return $
-                    ListE
-                        (map (VarE . mkName . ("create" ++) . cap . fst) tm)
-                )
-            |]
+mkCreateAll = currentTableMap >>= \case
+    Nothing -> return []
+    Just tm -> [d|
+        createAll :: ByteString
+        createAll = mconcat $ reverse
+            $(return $
+                ListE
+                    (map (VarE . mkName . ("create" ++) . cap . fst) tm)
+            )
+        |]
 
 table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
@@ -136,14 +135,14 @@ analyze (Column n t pk idx nl) = case t of
             (tn, dottedColName) = break (== '.') s
             cn = tail dottedColName
         thisModuleStr <- show <$> thisModule
-        lookupColumn thisModuleStr tn cn >>= \r -> case r of
+        lookupColumn thisModuleStr tn cn >>= \case
             Nothing -> fail $ concat
                 ["Column \"", cn, "\" of Table \"", tn, "\" not found"]
             Just AC{..} -> return $ acBase (plain act) (Just (tn, cn))
   where
     ret dt = return (acBase dt Nothing)
     acBase = AC n pk idx nl
-    plain dt = case dt of
+    plain = \case
         DBsmallserial -> DBsmallint
         DBserial -> DBinteger
         DBbigserial -> DBbigint
