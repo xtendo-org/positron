@@ -10,6 +10,7 @@ module Positron
     , (//)
     , module Positron.Alias
     , mkCreateAll
+    , queryInsert
 
     -- re-export data types
     , Int16
@@ -30,13 +31,19 @@ module Positron
 import Data.Char (isUpper, toUpper, toLower)
 import Data.Int
 import Data.List
+import Data.Monoid
 import Data.Scientific
 import Data.Word
 
 -- extra modules
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (pack)
+import Data.ByteString.Builder (Builder)
+import qualified Data.ByteString.Char8 as B (pack)
+import qualified Data.ByteString.Builder as B
+import qualified Data.ByteString.Lazy as LB (toStrict)
+import Data.Text (Text)
+import Data.Text.Encoding as T
 import Language.Haskell.TH
 
 -- local modules
@@ -94,7 +101,7 @@ table tabName pcols = do
                     ]
                 else ""
             ]
-    cqExp <- [| pack $(return $ LitE $ StringL createQuery) |]
+    cqExp <- [| B.pack $(return $ LitE $ StringL createQuery) |]
     let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
     return
         [ DataD [] dataName [] [RecC dataName recs] []
@@ -109,6 +116,64 @@ table tabName pcols = do
     gatherFKs (AC{..} : cs) = case acf of
         Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
         Nothing -> gatherFKs cs
+
+queryInsert :: String -> String -> Q [Dec]
+queryInsert queryStr tableName = do
+    maybeCurrentTableMap <- currentTableMap
+    let columnMap = maybeCurrentTableMap >>= lookup tableName
+    case columnMap of
+        Nothing -> fail "Can't find the table map for the current module"
+        Just tableMap -> let
+            columnTypes = map (columnTypeCon . snd) tableMap
+            columnArgs = map (VarP . mkName . ("_" ++) . fst) tableMap
+            allColumnNames = mconcat $ intersperse ", " $
+                map (lowerSnake . fst) tableMap
+            in do
+                mainContentExp <- [| mconcat
+                    [ $(return $ LitE $ StringL $
+                        "insert into " ++ lowerSnake tableName ++ " (")
+                    , allColumnNames, ") values ("
+                    , toByteString $ mconcat $ intersperse ", "
+                        $(return $ ListE $ map (expMake . snd) tableMap)
+                    , ");"
+                    ]
+                    |]
+                return
+                    [ SigD queryName $ foldr (\x y -> AppT (AppT ArrowT x) y)
+                        (ConT ''ByteString)
+                        columnTypes
+                    , FunD queryName
+                        [Clause columnArgs (NormalB mainContentExp) []]
+                    ]
+  where
+    queryName = mkName queryStr
+    expMake AC{..} = case act of
+        DBsmallint -> defWrap 'B.int16Dec
+        DBinteger -> defWrap 'B.int32Dec
+        DBbigint -> defWrap 'B.int64Dec
+        DBvarchar _ -> wrap
+            (VarE 'T.encodeUtf8Builder)
+            (AppE
+                (if acnl then AppE (VarE 'fmap) quote else quote)
+                (VarE $ mkName ("_" ++ acn))
+            )
+        _ -> AppE
+            (VarE 'B.byteString) $ AppE (VarE 'B.pack) $
+            AppE (VarE 'show) $ VarE $ mkName ("_" ++ acn)
+      where
+        quote = InfixE
+            (Just (InfixE (Just (LitE (StringL "'"))) (VarE '(<>)) Nothing))
+            (VarE '(.))
+            (Just (InfixE Nothing (VarE '(<>)) (Just (LitE (StringL "'")))))
+        defWrap f = wrap (VarE f) (VarE $ mkName $ "_" ++ acn)
+        wrap converter value = if acnl
+            then AppE
+                (AppE (AppE (VarE 'maybe) (LitE (StringL "null"))) converter)
+                value
+            else AppE converter value
+
+toByteString :: Builder -> ByteString
+toByteString = LB.toStrict . B.toLazyByteString
 
 fmtFK :: String -> String -> String -> String
 fmtFK n t c = concat
@@ -160,8 +225,8 @@ columnTypeCon AC{..} = constructor $ case act of
     DBsmallserial -> ''Int16
     DBserial -> ''Int32
     DBbigserial -> ''Int64
-    DBvarchar _ -> ''ByteString
-    DBtext -> ''ByteString
+    DBvarchar _ -> ''Text
+    DBtext -> ''Text
   where
     constructor = if acnl
         then AppT (ConT ''Maybe) . ConT
