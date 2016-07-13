@@ -44,15 +44,6 @@ import Positron.Alias
 import Positron.Types
 import Positron.Unsafe
 
-data AnalyzedColumn = AC
-    { acn :: !String -- column name
-    , acp :: !Bool -- primary key?
-    , aci :: !Bool -- indexed?
-    , acnl :: !Bool -- nullable?
-    , act :: !DBColumnType
-    , acf :: !(Maybe (String, String)) -- foreign key?
-    }
-
 mkCreateAll :: Q [Dec]
 mkCreateAll = do
     thisModuleStr <- show <$> thisModule
@@ -71,7 +62,7 @@ table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
     cols <- mapM analyze pcols
     thisModuleStr <- show <$> thisModule
-    addMap thisModuleStr (tabName, [(acn, act) | AC{..} <- cols])
+    addMap thisModuleStr (tabName, [(acn, a) | a@AC{..} <- cols])
     let
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
@@ -148,7 +139,7 @@ analyze (Column n t pk idx nl) = case t of
         lookupColumn thisModuleStr tn cn >>= \r -> case r of
             Nothing -> fail $ concat
                 ["Column \"", cn, "\" of Table \"", tn, "\" not found"]
-            Just dt -> return $ acBase (plain dt) (Just (tn, cn))
+            Just AC{..} -> return $ acBase (plain act) (Just (tn, cn))
   where
     ret dt = return (acBase dt Nothing)
     acBase = AC n pk idx nl

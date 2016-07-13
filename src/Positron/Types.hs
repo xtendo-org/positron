@@ -6,6 +6,7 @@ module Positron.Types
     , ColumnProp(..)
     , ColumnType(..)
     , DBColumnType(..)
+    , AnalyzedColumn(..)
     , (//)
     ) where
 
@@ -87,3 +88,13 @@ instance IsString (ColumnType -> Column) where
         , columnIndexed = False
         , columnNullable = False
         }
+
+data AnalyzedColumn = AC
+    { acn :: !String -- column name
+    , acp :: !Bool -- primary key?
+    , aci :: !Bool -- indexed?
+    , acnl :: !Bool -- nullable?
+    , act :: !DBColumnType
+    , acf :: !(Maybe (String, String)) -- foreign key?
+    }
+

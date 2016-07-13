@@ -20,7 +20,7 @@ import Language.Haskell.TH (Q, runIO)
 
 import Positron.Types
 
-type ColumnMap = [(String, DBColumnType)]
+type ColumnMap = [(String, AnalyzedColumn)]
 type TableMap = [(String, ColumnMap)]
 type ModuleMap = [(String, TableMap)]
 
@@ -32,7 +32,7 @@ addMap :: String -> (String, ColumnMap) -> Q ()
 addMap modName tbMap = runIO $ modifyIORef moduleMap $
     add modName tbMap
 
-lookupColumn :: String -> String -> String -> Q (Maybe DBColumnType)
+lookupColumn :: String -> String -> String -> Q (Maybe AnalyzedColumn)
 lookupColumn modName tabName colName = runIO $
     (lookup modName >=> lookup tabName >=> lookup colName) <$>
         readIORef moduleMap
