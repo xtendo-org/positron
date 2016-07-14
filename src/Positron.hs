@@ -11,6 +11,7 @@ module Positron
     , module Positron.Alias
     , mkCreateAll
     , queryInsert
+    , queryUpsert
 
     -- re-export data types
     , Int16
@@ -118,24 +119,41 @@ table tabName pcols = do
         Nothing -> gatherFKs cs
 
 queryInsert :: String -> String -> Q [Dec]
-queryInsert queryStr tableName = do
+queryInsert = queryUpsertBase False
+
+queryUpsert :: String -> String -> Q [Dec]
+queryUpsert = queryUpsertBase True
+
+queryUpsertBase :: Bool -> String -> String -> Q [Dec]
+queryUpsertBase upsert queryStr tableName = do
     maybeCurrentTableMap <- currentTableMap
     let columnMap = maybeCurrentTableMap >>= lookup tableName
     case columnMap of
         Nothing -> fail "Can't find the table map for the current module"
         Just tableMap -> let
-            columnTypes = map (columnTypeCon . snd) tableMap
+            acols = map snd tableMap
+            allPKNames = mconcat $ intersperse ", " $
+                map (lowerSnake . acn) $ filter acp acols
+            columnTypes = map columnTypeCon acols
             columnArgs = map (VarP . mkName . ("_" ++) . fst) tableMap
-            allColumnNames = mconcat $ intersperse ", " $
-                map (lowerSnake . fst) tableMap
+            columnNames = map (lowerSnake . fst) tableMap
             in do
                 mainContentExp <- [| mconcat
                     [ $(return $ LitE $ StringL $
                         "insert into " ++ lowerSnake tableName ++ " (")
-                    , allColumnNames, ") values ("
+                    , mconcat $ intersperse ", " columnNames, ") values ("
                     , toByteString $ mconcat $ intersperse ", "
-                        $(return $ ListE $ map (expMake . snd) tableMap)
-                    , ");"
+                        $(return $ ListE $ map expMake acols)
+                    , ")"
+                    , if upsert then mconcat
+                        [ " ON CONFLICT ("
+                        , allPKNames
+                        , ") DO UPDATE SET "
+                        , mconcat $ intersperse ", " $ flip map columnNames $
+                            \cn -> mconcat [cn, " = EXCLUDED.", cn]
+                        ]
+                    else ""
+                    , ";"
                     ]
                     |]
                 return
@@ -148,24 +166,36 @@ queryInsert queryStr tableName = do
   where
     queryName = mkName queryStr
     expMake AC{..} = case act of
-        DBsmallint -> defWrap 'B.int16Dec
-        DBinteger -> defWrap 'B.int32Dec
-        DBbigint -> defWrap 'B.int64Dec
-        DBvarchar _ -> wrap
+        DBsmallint -> defaultWrapVarE 'B.int16Dec
+        DBinteger -> defaultWrapVarE 'B.int32Dec
+        DBbigint -> defaultWrapVarE 'B.int64Dec
+        DBsmallserial -> defaultWrapVarE 'B.int16Dec
+        DBserial -> defaultWrapVarE 'B.int32Dec
+        DBbigserial -> defaultWrapVarE 'B.int64Dec
+        DBvarchar _ -> textMake
+        DBtext -> textMake
+        _ -> defaultWrap bShow
+      where
+        textMake = wrap
             (VarE 'T.encodeUtf8Builder)
             (AppE
                 (if acnl then AppE (VarE 'fmap) quote else quote)
                 (VarE $ mkName ("_" ++ acn))
             )
-        _ -> AppE
-            (VarE 'B.byteString) $ AppE (VarE 'B.pack) $
-            AppE (VarE 'show) $ VarE $ mkName ("_" ++ acn)
-      where
+        bShow = InfixE
+            (Just (VarE 'B.byteString))
+            (VarE '(.))
+            (Just (InfixE
+                (Just (VarE 'B.pack))
+                (VarE '(.))
+                (Just (VarE 'show))
+            ))
         quote = InfixE
             (Just (InfixE (Just (LitE (StringL "'"))) (VarE '(<>)) Nothing))
             (VarE '(.))
             (Just (InfixE Nothing (VarE '(<>)) (Just (LitE (StringL "'")))))
-        defWrap f = wrap (VarE f) (VarE $ mkName $ "_" ++ acn)
+        defaultWrapVarE = defaultWrap . VarE
+        defaultWrap f = wrap f (VarE $ mkName $ "_" ++ acn)
         wrap converter value = if acnl
             then AppE
                 (AppE (AppE (VarE 'maybe) (LitE (StringL "null"))) converter)
