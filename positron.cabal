@@ -22,6 +22,7 @@ library
     Positron.Unsafe
   build-depends:
     bytestring >= 0.10.6.0 && < 0.11,
+    postgresql-libpq >= 0.9.1.1 && < 0.10,
     scientific >= 0.3.4.7 && < 0.4,
     template-haskell >= 2.10.0.0 && < 3,
     text >= 1.2.2.1 && < 2,

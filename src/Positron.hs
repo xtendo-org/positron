@@ -13,6 +13,9 @@ module Positron
     , queryInsert
     , queryUpsert
 
+    , Connection
+    , connect
+
     -- re-export data types
     , Int16
     , Int32
@@ -52,6 +55,7 @@ import Language.Haskell.TH
 import Positron.Alias
 import Positron.Types
 import Positron.Unsafe
+import Positron.Driver
 
 mkCreateAll :: Q [Dec]
 mkCreateAll = currentTableMap >>= \case
@@ -157,13 +161,33 @@ queryUpsertBase upsert queryStr tableName = do
                     ]
                     |]
                 return
-                    [ SigD queryName $ foldr (\x y -> AppT (AppT ArrowT x) y)
-                        (ConT ''ByteString)
-                        columnTypes
+                    [ SigD queryName $
+                        AppT (AppT ArrowT (ConT ''Connection)) $
+                            foldr (\x y -> AppT (AppT ArrowT x) y)
+                                resultTypeSignature
+                                columnTypes
                     , FunD queryName
-                        [Clause columnArgs (NormalB mainContentExp) []]
+                        [ Clause
+                            (VarP (mkName "_conn") : columnArgs)
+                            (NormalB $ AppE
+                                (AppE
+                                    (VarE 'plainExec)
+                                    (VarE $ mkName "_conn")
+                                )
+                                mainContentExp
+                            )
+                            []
+                        ]
                     ]
   where
+    resultTypeSignature = AppT (ConT ''IO)
+        (AppT
+            (AppT
+                (ConT ''Either)
+                (ConT ''ByteString)
+            )
+            (TupleT 0)
+        )
     queryName = mkName queryStr
     expMake AC{..} = case act of
         DBsmallint -> defaultWrapVarE 'B.int16Dec
