@@ -112,7 +112,7 @@ table tabName pcols = do
     cqExp <- [| B.pack $(return $ LitE $ StringL createQuery) |]
     let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
     return
-        [ DataD [] dataName [] [RecC dataName recs] []
+        [ DataD [] dataName [] [RecC dataName recs] [''Eq, ''Show]
         , cqSigDec
         , cqValDec
         ]
