@@ -18,6 +18,7 @@ library
   exposed-modules:     Positron
   other-modules:
     Positron.Alias
+    Positron.Driver
     Positron.Types
     Positron.Unsafe
   build-depends:

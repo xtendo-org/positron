@@ -3,7 +3,8 @@
 module Positron.Driver
     ( Connection(..)
     , connect
-    , plainExec
+    , unsafePlainExec
+    , unsafeRawExec
     ) where
 
 -- data types
@@ -23,6 +24,9 @@ import Data.Word (Word16)
 import qualified Database.PostgreSQL.LibPQ as PQ
 
 newtype Connection = Conn PQ.Connection
+
+instance Show Connection where
+    show _ = "<PostgreSQL connection>"
 
 connect
     :: Maybe Text
@@ -44,13 +48,31 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         , fmap ("password=" <>) dbPassword
         ]
 
-plainExec :: Connection -> ByteString -> IO (Either ByteString ())
-plainExec (Conn conn) stmt = printStmt >> PQ.exec conn stmt >>= \case
+unsafePlainExec :: Connection -> ByteString -> IO (Either ByteString ())
+unsafePlainExec (Conn conn) stmt = PQ.exec conn stmt >>= \case
     Nothing -> unknownError
     Just result -> PQ.resultStatus result >>= \case
         PQ.CommandOk -> do
             PQ.errorMessage conn >>= maybe (return ()) printIf
             return (Right ())
+        _ -> unknownError
+  where
+    unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>
+        PQ.errorMessage conn
+    printStmt = B.putStr (stmt <> "\n")
+    printIf s = when (s /= "") $ printStmt >> print s
+
+
+unsafeRawExec
+    :: Connection
+    -> ByteString
+    -> IO (Either ByteString PQ.Result)
+unsafeRawExec (Conn conn) stmt = printStmt >> PQ.exec conn stmt >>= \case
+    Nothing -> unknownError
+    Just result -> PQ.resultStatus result >>= \case
+        PQ.TuplesOk -> do
+            PQ.errorMessage conn >>= maybe (return ()) printIf
+            return (Right result)
         _ -> unknownError
   where
     unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>

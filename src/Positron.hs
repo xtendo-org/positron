@@ -15,6 +15,8 @@ module Positron
 
     , Connection
     , connect
+    , unsafePlainExec
+    , unsafeRawExec
 
     -- re-export data types
     , Int16
@@ -47,6 +49,7 @@ import qualified Data.ByteString.Char8 as B (pack)
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as LB (toStrict)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Text.Encoding as T
 import Language.Haskell.TH
 
@@ -171,7 +174,7 @@ queryUpsertBase upsert queryStr tableName = do
                             (VarP (mkName "_conn") : columnArgs)
                             (NormalB $ AppE
                                 (AppE
-                                    (VarE 'plainExec)
+                                    (VarE 'unsafePlainExec)
                                     (VarE $ mkName "_conn")
                                 )
                                 mainContentExp
@@ -203,7 +206,7 @@ queryUpsertBase upsert queryStr tableName = do
         textMake = wrap
             (VarE 'T.encodeUtf8Builder)
             (AppE
-                (if acnl then AppE (VarE 'fmap) quote else quote)
+                (if acnl then AppE (VarE 'fmap) sanitize else sanitize)
                 (VarE $ mkName ("_" ++ acn))
             )
         bShow = InfixE
@@ -214,10 +217,14 @@ queryUpsertBase upsert queryStr tableName = do
                 (VarE '(.))
                 (Just (VarE 'show))
             ))
+        sanitize = InfixE (Just quote) (VarE '(.)) (Just escape)
         quote = InfixE
             (Just (InfixE (Just (LitE (StringL "'"))) (VarE '(<>)) Nothing))
             (VarE '(.))
             (Just (InfixE Nothing (VarE '(<>)) (Just (LitE (StringL "'")))))
+        escape = AppE
+            (AppE (VarE 'T.replace) (AppE (VarE 'T.pack) (LitE (StringL "'"))))
+            (AppE (VarE 'T.pack) (LitE (StringL "''")))
         defaultWrapVarE = defaultWrap . VarE
         defaultWrap f = wrap f (VarE $ mkName $ "_" ++ acn)
         wrap converter value = if acnl
