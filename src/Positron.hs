@@ -81,7 +81,7 @@ table tabName pcols = do
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
         recs = for cols $ \ac@AC{..} ->
-            (mkName $ tabName ++ cap acn, Unpacked, columnTypeCon ac)
+            (mkName $ tabName ++ cap acn, bang, columnTypeCon ac)
         primaryKeys = map (lowerSnake . acn) $ filter acp cols
         foreignKeys = gatherFKs cols
         indexedKeys = map (lowerSnake . acn) $ filter aci cols
@@ -112,7 +112,8 @@ table tabName pcols = do
     cqExp <- [| B.pack $(return $ LitE $ StringL createQuery) |]
     let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
     return
-        [ DataD [] dataName [] [RecC dataName recs] [''Eq, ''Show]
+        [ DataD [] dataName [] Nothing [RecC dataName recs]
+            [ConT ''Eq, ConT ''Show]
         , cqSigDec
         , cqValDec
         ]
@@ -124,6 +125,7 @@ table tabName pcols = do
     gatherFKs (AC{..} : cs) = case acf of
         Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
         Nothing -> gatherFKs cs
+    bang = Bang SourceUnpack SourceStrict
 
 queryInsert :: String -> String -> Q [Dec]
 queryInsert = queryUpsertBase False
