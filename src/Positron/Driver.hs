@@ -67,7 +67,7 @@ unsafeRawExec
     :: Connection
     -> ByteString
     -> IO (Either ByteString PQ.Result)
-unsafeRawExec (Conn conn) stmt = printStmt >> PQ.exec conn stmt >>= \case
+unsafeRawExec (Conn conn) stmt = PQ.exec conn stmt >>= \case
     Nothing -> unknownError
     Just result -> PQ.resultStatus result >>= \case
         PQ.TuplesOk -> do
@@ -77,5 +77,4 @@ unsafeRawExec (Conn conn) stmt = printStmt >> PQ.exec conn stmt >>= \case
   where
     unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>
         PQ.errorMessage conn
-    printStmt = B.putStr (stmt <> "\n")
     printIf s = when (s /= "") $ print s
