@@ -7,7 +7,7 @@ module Positron.Unsafe
     , currentTableMap
     ) where
 
-import Import
+import Positron.Import
 
 -- base modules
 

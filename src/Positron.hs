@@ -9,9 +9,8 @@ module Positron
     , ColumnProp(..)
     , (//)
     , module Positron.Alias
+    , module Positron.Query
     , mkCreateAll
-    , queryInsert
-    , queryUpsert
 
     , Connection
     , connect
@@ -32,13 +31,12 @@ module Positron
 
     ) where
 
-import Import
+import Positron.Import
 
 -- extra modules
 
 import qualified Data.ByteString.Char8 as B (pack)
 import qualified Data.ByteString.Builder as B
-import qualified Data.ByteString.Lazy as LB (toStrict)
 import qualified Data.Text as T
 import Data.Text.Encoding as T
 import Language.Haskell.TH
@@ -49,6 +47,7 @@ import Positron.Alias
 import Positron.Types
 import Positron.Unsafe
 import Positron.Driver
+import Positron.Query
 
 mkCreateAll :: Q [Dec]
 mkCreateAll = currentTableMap >>= \case
@@ -71,16 +70,16 @@ table tabName pcols = do
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
         recs = for cols $ \ac@AC{..} ->
-            (mkName $ tabName ++ cap acn, bang, columnTypeCon ac)
-        primaryKeys = map (lowerSnake . acn) $ filter acp cols
+            (mkName $ decap tabName ++ cap acn, bang, columnTypeCon ac)
+        primaryKeys = map (snake . acn) $ filter acp cols
         foreignKeys = gatherFKs cols
-        indexedKeys = map (lowerSnake . acn) $ filter aci cols
+        indexedKeys = map (snake . acn) $ filter aci cols
         createQuery = concat
             [ "CREATE TABLE IF NOT EXISTS "
             , snakeTabName
             , " (\n    "
             , concat $ for cols $ \AC{..} -> concat
-                [ lowerSnake acn, " ", show act
+                [ snake acn, " ", show act
                 , if acnl then " NULL" else " NOT NULL"
                 , ",\n    "
                 ]
@@ -108,7 +107,7 @@ table tabName pcols = do
         , cqValDec
         ]
   where
-    snakeTabName = lowerSnake tabName
+    snakeTabName = snake tabName
     capTabName = cap tabName
     dataName = mkName capTabName
     gatherFKs [] = []
@@ -116,123 +115,10 @@ table tabName pcols = do
         Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
         Nothing -> gatherFKs cs
     bang = Bang SourceUnpack SourceStrict
-
-queryInsert :: String -> String -> Q [Dec]
-queryInsert = queryUpsertBase False
-
-queryUpsert :: String -> String -> Q [Dec]
-queryUpsert = queryUpsertBase True
-
-queryUpsertBase :: Bool -> String -> String -> Q [Dec]
-queryUpsertBase upsert queryStr tableName = do
-    maybeCurrentTableMap <- currentTableMap
-    let columnMap = maybeCurrentTableMap >>= lookup tableName
-    case columnMap of
-        Nothing -> fail "Can't find the table map for the current module"
-        Just tableMap -> let
-            acols = map snd tableMap
-            allPKNames = mconcat $ intersperse ", " $
-                map (lowerSnake . acn) $ filter acp acols
-            columnTypes = map columnTypeCon acols
-            columnArgs = map (VarP . mkName . ("_" ++) . fst) tableMap
-            columnNames = map (lowerSnake . fst) tableMap
-            in do
-                mainContentExp <- [| mconcat
-                    [ $(return $ LitE $ StringL $
-                        "insert into " ++ lowerSnake tableName ++ " (")
-                    , mconcat $ intersperse ", " columnNames, ") values ("
-                    , toByteString $ mconcat $ intersperse ", "
-                        $(return $ ListE $ map expMake acols)
-                    , ")"
-                    , if upsert then mconcat
-                        [ " ON CONFLICT ("
-                        , allPKNames
-                        , ") DO UPDATE SET "
-                        , mconcat $ intersperse ", " $ flip map columnNames $
-                            \cn -> mconcat [cn, " = EXCLUDED.", cn]
-                        ]
-                    else ""
-                    , ";"
-                    ]
-                    |]
-                return
-                    [ SigD queryName $
-                        AppT (AppT ArrowT (ConT ''Connection)) $
-                            foldr (\x y -> AppT (AppT ArrowT x) y)
-                                resultTypeSignature
-                                columnTypes
-                    , FunD queryName
-                        [ Clause
-                            (VarP (mkName "_conn") : columnArgs)
-                            (NormalB $ AppE
-                                (AppE
-                                    (VarE 'unsafePlainExec)
-                                    (VarE $ mkName "_conn")
-                                )
-                                mainContentExp
-                            )
-                            []
-                        ]
-                    ]
-  where
-    resultTypeSignature = AppT (ConT ''IO)
-        (AppT
-            (AppT
-                (ConT ''Either)
-                (ConT ''ByteString)
-            )
-            (TupleT 0)
-        )
-    queryName = mkName queryStr
-    expMake AC{..} = case act of
-        DBsmallint -> defaultWrapVarE 'B.int16Dec
-        DBinteger -> defaultWrapVarE 'B.int32Dec
-        DBbigint -> defaultWrapVarE 'B.int64Dec
-        DBsmallserial -> defaultWrapVarE 'B.int16Dec
-        DBserial -> defaultWrapVarE 'B.int32Dec
-        DBbigserial -> defaultWrapVarE 'B.int64Dec
-        DBvarchar _ -> textMake
-        DBtext -> textMake
-        _ -> defaultWrap bShow
-      where
-        textMake = wrap
-            (VarE 'T.encodeUtf8Builder)
-            (AppE
-                (if acnl then AppE (VarE 'fmap) sanitize else sanitize)
-                (VarE $ mkName ("_" ++ acn))
-            )
-        bShow = InfixE
-            (Just (VarE 'B.byteString))
-            (VarE '(.))
-            (Just (InfixE
-                (Just (VarE 'B.pack))
-                (VarE '(.))
-                (Just (VarE 'show))
-            ))
-        sanitize = InfixE (Just quote) (VarE '(.)) (Just escape)
-        quote = InfixE
-            (Just (InfixE (Just (LitE (StringL "'"))) (VarE '(<>)) Nothing))
-            (VarE '(.))
-            (Just (InfixE Nothing (VarE '(<>)) (Just (LitE (StringL "'")))))
-        escape = AppE
-            (AppE (VarE 'T.replace) (AppE (VarE 'T.pack) (LitE (StringL "'"))))
-            (AppE (VarE 'T.pack) (LitE (StringL "''")))
-        defaultWrapVarE = defaultWrap . VarE
-        defaultWrap f = wrap f (VarE $ mkName $ "_" ++ acn)
-        wrap converter value = if acnl
-            then AppE
-                (AppE (AppE (VarE 'maybe) (LitE (StringL "null"))) converter)
-                value
-            else AppE converter value
-
-toByteString :: Builder -> ByteString
-toByteString = LB.toStrict . B.toLazyByteString
-
-fmtFK :: String -> String -> String -> String
-fmtFK n t c = concat
-    [ "FOREIGN KEY(", lowerSnake n, ") REFERENCES "
-    , lowerSnake t, " (", lowerSnake c, ")"
-    ]
+    fmtFK n t c = concat
+        [ "FOREIGN KEY(", snake n, ") REFERENCES "
+        , snake t, " (", snake c, ")"
+        ]
 
 analyze :: Column -> Q AnalyzedColumn
 analyze (Column n t pk idx nl) = case t of
@@ -266,36 +152,15 @@ analyze (Column n t pk idx nl) = case t of
         DBbigserial -> DBbigint
         x -> x
 
-columnTypeCon :: AnalyzedColumn -> Type
-columnTypeCon AC{..} = constructor $ case act of
-    DBsmallint -> ''Int16
-    DBinteger -> ''Int32
-    DBbigint -> ''Int64
-    DBdecimal -> ''Scientific
-    DBnumeric -> ''Scientific
-    DBreal -> ''Float
-    DBdouble -> ''Double
-    DBsmallserial -> ''Int16
-    DBserial -> ''Int32
-    DBbigserial -> ''Int64
-    DBvarchar _ -> ''Text
-    DBtext -> ''Text
-  where
-    constructor = if acnl
-        then AppT (ConT ''Maybe) . ConT
-        else ConT
-
 -- utility functions
 
 for :: Functor f => f a -> (a -> b) -> f b
 for = flip fmap
 
-lowerSnake :: String -> String
-lowerSnake [] = []
-lowerSnake (x : xs)
-    | isUpper x = '_' : toLower x : lowerSnake xs
-    | otherwise = x : lowerSnake xs
-
 cap :: String -> String
 cap [] = []
 cap (c : cs) = toUpper c : cs
+
+decap :: String -> String
+decap [] = []
+decap (c : cs) = toLower c : cs

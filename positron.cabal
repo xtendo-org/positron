@@ -19,8 +19,10 @@ library
   other-modules:
     Positron.Alias
     Positron.Driver
+    Positron.Import
     Positron.Types
     Positron.Unsafe
+    Positron.Query
   build-depends:
     bytestring >= 0.10.6.0 && < 0.11,
     postgresql-libpq >= 0.9.1.1 && < 0.10,

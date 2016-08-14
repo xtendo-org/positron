@@ -7,7 +7,7 @@ module Positron.Driver
     , unsafeRawExec
     ) where
 
-import Import
+import Positron.Import
 
 -- data types
 

@@ -1,3 +1,5 @@
+{-# language TemplateHaskell #-}
+{-# language RecordWildCards #-}
 {-# language FlexibleInstances #-}
 {-# language FunctionalDependencies #-}
 
@@ -7,10 +9,13 @@ module Positron.Types
     , ColumnType(..)
     , DBColumnType(..)
     , AnalyzedColumn(..)
+    , columnTypeCon
     , (//)
     ) where
 
-import Data.String
+import Positron.Import
+
+import Language.Haskell.TH
 
 data Column = Column
     { columnName :: String
@@ -98,3 +103,21 @@ data AnalyzedColumn = AC
     , acf :: !(Maybe (String, String)) -- foreign key?
     }
 
+columnTypeCon :: AnalyzedColumn -> Type
+columnTypeCon AC{..} = constructor $ case act of
+    DBsmallint -> ''Int16
+    DBinteger -> ''Int32
+    DBbigint -> ''Int64
+    DBdecimal -> ''Scientific
+    DBnumeric -> ''Scientific
+    DBreal -> ''Float
+    DBdouble -> ''Double
+    DBsmallserial -> ''Int16
+    DBserial -> ''Int32
+    DBbigserial -> ''Int64
+    DBvarchar _ -> ''Text
+    DBtext -> ''Text
+  where
+    constructor = if acnl
+        then AppT (ConT ''Maybe) . ConT
+        else ConT
