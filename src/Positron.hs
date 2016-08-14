@@ -297,8 +297,8 @@ columnTypeCon AC{..} = constructor $ case act of
 
 -- utility functions
 
-for :: [a] -> (a -> b) -> [b]
-for = flip map
+for :: Functor f => f a -> (a -> b) -> f b
+for = flip fmap
 
 lowerSnake :: String -> String
 lowerSnake [] = []
