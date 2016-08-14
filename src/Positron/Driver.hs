@@ -7,17 +7,13 @@ module Positron.Driver
     , unsafeRawExec
     ) where
 
+import Import
+
 -- data types
 
-import Control.Monad
-import Data.Maybe
-import Data.Monoid
-import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Data.Word (Word16)
 
 -- extra modules
 

@@ -7,15 +7,11 @@ module Positron.Unsafe
     , currentTableMap
     ) where
 
+import Import
+
 -- base modules
 
-import Control.Monad
-import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
-
--- extra modules
-
-import Language.Haskell.TH (Q, runIO, thisModule)
 
 -- local modules
 

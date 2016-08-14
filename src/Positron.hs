@@ -32,23 +32,13 @@ module Positron
 
     ) where
 
--- base modules
-
-import Data.Char (isUpper, toUpper, toLower)
-import Data.Int
-import Data.List
-import Data.Monoid
-import Data.Scientific
-import Data.Word
+import Import
 
 -- extra modules
 
-import Data.ByteString (ByteString)
-import Data.ByteString.Builder (Builder)
 import qualified Data.ByteString.Char8 as B (pack)
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as LB (toStrict)
-import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding as T
 import Language.Haskell.TH
