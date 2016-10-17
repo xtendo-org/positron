@@ -2,12 +2,12 @@ name:                positron
 version:             0.1.0.0
 synopsis:            Don't-Repeat-Yourself database library
 description:         Please see README.md
-homepage:            https://github.com/kinoru/positron#readme
+homepage:            https://github.com/xtendo-org/positron#readme
 license:             BSD3
 license-file:        LICENSE
-author:              kinoru
-maintainer:          xkinoru@gmail.com
-copyright:           2016 kinoru
+author:              XT
+maintainer:          e@xtendo.org
+copyright:           2016 XT
 category:            Database
 build-type:          Simple
 -- extra-source-files:
@@ -45,4 +45,4 @@ test-suite positron-test
 
 source-repository head
   type:     git
-  location: https://github.com/kinoru/positron
+  location: https://github.com/xtendo-org/positron
