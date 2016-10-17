@@ -16,10 +16,6 @@ import qualified Data.ByteString.Lazy as LB (toStrict)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
--- extra modules
-
-import Language.Haskell.TH
-
 -- local modules
 
 import Positron.Driver

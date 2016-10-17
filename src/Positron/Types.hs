@@ -15,8 +15,6 @@ module Positron.Types
 
 import Positron.Import
 
-import Language.Haskell.TH
-
 data Column = Column
     { columnName :: String
     , columnType :: ColumnType

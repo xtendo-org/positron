@@ -6,6 +6,7 @@ module Positron.Import
     , snake
     ) where
 
+import Control.Concurrent.MVar as Module
 import Control.Monad as Module
 import Data.Char as Module
 import Data.Int as Module

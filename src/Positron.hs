@@ -36,10 +36,6 @@ import Positron.Import
 -- extra modules
 
 import qualified Data.ByteString.Char8 as B (pack)
-import qualified Data.ByteString.Builder as B
-import qualified Data.Text as T
-import Data.Text.Encoding as T
-import Language.Haskell.TH
 
 -- local modules
 
@@ -70,7 +66,7 @@ table tabName pcols = do
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
         recs = for cols $ \ac@AC{..} ->
-            (mkName $ decap tabName ++ cap acn, bang, columnTypeCon ac)
+            (mkName $ decap tabName ++ cap acn, thisBang, columnTypeCon ac)
         primaryKeys = map (snake . acn) $ filter acp cols
         foreignKeys = gatherFKs cols
         indexedKeys = map (snake . acn) $ filter aci cols
@@ -114,7 +110,7 @@ table tabName pcols = do
     gatherFKs (AC{..} : cs) = case acf of
         Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
         Nothing -> gatherFKs cs
-    bang = Bang SourceUnpack SourceStrict
+    thisBang = Bang SourceUnpack SourceStrict
     fmtFK n t c = concat
         [ "FOREIGN KEY(", snake n, ") REFERENCES "
         , snake t, " (", snake c, ")"

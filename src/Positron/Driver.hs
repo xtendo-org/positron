@@ -19,7 +19,7 @@ import qualified Data.Text.Encoding as T
 
 import qualified Database.PostgreSQL.LibPQ as PQ
 
-newtype Connection = Conn PQ.Connection
+data Connection = Conn PQ.Connection (MVar ())
 
 instance Show Connection where
     show _ = "<PostgreSQL connection>"
@@ -33,7 +33,8 @@ connect
     -> IO Connection
 connect dbHost dbPort dbName dbUser dbPassword = do
     conn <- PQ.connectdb conninfo
-    return (Conn conn)
+    box <- newMVar ()
+    return (Conn conn box)
   where
     conninfo = B.intercalate " " $ mapMaybe (fmap T.encodeUtf8) sources
     sources =
@@ -45,13 +46,14 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         ]
 
 unsafePlainExec :: Connection -> ByteString -> IO (Either ByteString ())
-unsafePlainExec (Conn conn) stmt = PQ.exec conn stmt >>= \case
-    Nothing -> unknownError
-    Just result -> PQ.resultStatus result >>= \case
-        PQ.CommandOk -> do
-            PQ.errorMessage conn >>= maybe (return ()) printIf
-            return (Right ())
-        _ -> unknownError
+unsafePlainExec (Conn conn lock) stmt = withLock lock $
+    PQ.exec conn stmt >>= \case
+        Nothing -> unknownError
+        Just result -> PQ.resultStatus result >>= \case
+            PQ.CommandOk -> do
+                PQ.errorMessage conn >>= maybe (return ()) printIf
+                return (Right ())
+            _ -> unknownError
   where
     unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>
         PQ.errorMessage conn
@@ -63,14 +65,22 @@ unsafeRawExec
     :: Connection
     -> ByteString
     -> IO (Either ByteString PQ.Result)
-unsafeRawExec (Conn conn) stmt = PQ.exec conn stmt >>= \case
-    Nothing -> unknownError
-    Just result -> PQ.resultStatus result >>= \case
-        PQ.TuplesOk -> do
-            PQ.errorMessage conn >>= maybe (return ()) printIf
-            return (Right result)
-        _ -> unknownError
+unsafeRawExec (Conn conn lock) stmt = withLock lock $
+    PQ.exec conn stmt >>= \case
+        Nothing -> unknownError
+        Just result -> PQ.resultStatus result >>= \case
+            PQ.TuplesOk -> do
+                PQ.errorMessage conn >>= maybe (return ()) printIf
+                return (Right result)
+            _ -> unknownError
   where
     unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>
         PQ.errorMessage conn
     printIf s = when (s /= "") $ print s
+
+withLock :: MVar () -> IO a -> IO a
+withLock lock action = do
+    takeMVar lock
+    value <- action
+    putMVar lock ()
+    return value
