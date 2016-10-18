@@ -60,6 +60,7 @@ queryUpsertBase upsert queryStr tableName = do
                     , ";"
                     ]
                     |]
+                resultTypeSignature <- [t| IO (Either ByteString ()) |]
                 return
                     [ SigD queryName $
                         AppT (AppT ArrowT (ConT ''Connection)) $
@@ -80,14 +81,6 @@ queryUpsertBase upsert queryStr tableName = do
                         ]
                     ]
   where
-    resultTypeSignature = AppT (ConT ''IO)
-        (AppT
-            (AppT
-                (ConT ''Either)
-                (ConT ''ByteString)
-            )
-            (TupleT 0)
-        )
     queryName = mkName queryStr
     expMake AC{..} = case act of
         DBsmallint -> defaultWrapVarE 'B.int16Dec
