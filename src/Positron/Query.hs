@@ -1,9 +1,11 @@
 {-# language TemplateHaskell #-}
 {-# language RecordWildCards #-}
+{-# language LambdaCase #-}
 
 module Positron.Query
     ( queryInsert
     , queryUpsert
+    , queryGet
     ) where
 
 import Positron.Import
@@ -16,11 +18,16 @@ import qualified Data.ByteString.Lazy as LB (toStrict)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
+-- extra modules
+
+import qualified Database.PostgreSQL.LibPQ as PQ
+
 -- local modules
 
 import Positron.Driver
 import Positron.Types
 import Positron.Unsafe
+import Positron.Codec
 
 queryInsert :: String -> String -> Q [Dec]
 queryInsert = queryUpsertBase False
@@ -29,57 +36,50 @@ queryUpsert :: String -> String -> Q [Dec]
 queryUpsert = queryUpsertBase True
 
 queryUpsertBase :: Bool -> String -> String -> Q [Dec]
-queryUpsertBase upsert queryStr tableName = do
-    maybeCurrentTableMap <- currentTableMap
-    let columnMap = maybeCurrentTableMap >>= lookup tableName
-    case columnMap of
-        Nothing -> fail "Can't find the table map for the current module"
-        Just tableMap -> let
-            acols = map snd tableMap
-            allPKNames = mconcat $ intersperse ", " $
-                map (snake . acn) $ filter acp acols
-            columnTypes = map columnTypeCon acols
-            columnArgs = map (VarP . mkName . ("_" ++) . fst) tableMap
-            columnNames = map (snake . fst) tableMap
-            in do
-                mainContentExp <- [| mconcat
-                    [ $(return $ LitE $ StringL $
-                        "insert into " ++ snake tableName ++ " (")
-                    , mconcat $ intersperse ", " columnNames, ") values ("
-                    , toByteString $ mconcat $ intersperse ", "
-                        $(return $ ListE $ map expMake acols)
-                    , ")"
-                    , if upsert then mconcat
-                        [ " ON CONFLICT ("
-                        , allPKNames
-                        , ") DO UPDATE SET "
-                        , mconcat $ intersperse ", " $ flip map columnNames $
-                            \cn -> mconcat [cn, " = EXCLUDED.", cn]
-                        ]
-                    else ""
-                    , ";"
-                    ]
-                    |]
-                resultTypeSignature <- [t| IO (Either ByteString ()) |]
-                return
-                    [ SigD queryName $
-                        AppT (AppT ArrowT (ConT ''Connection)) $
-                            foldr (\x y -> AppT (AppT ArrowT x) y)
-                                resultTypeSignature
-                                columnTypes
-                    , FunD queryName
-                        [ Clause
-                            (VarP (mkName "_conn") : columnArgs)
-                            (NormalB $ AppE
-                                (AppE
-                                    (VarE 'unsafePlainExec)
-                                    (VarE $ mkName "_conn")
-                                )
-                                mainContentExp
-                            )
-                            []
-                        ]
-                    ]
+queryUpsertBase upsert queryStr tableName = getTable tableName >>=
+    \ table -> let
+        acols = map snd table
+        allPKNames = mconcat $ intersperse ", " $
+            map (snake . acn) $ filter acp acols
+        columnTypes = map columnTypeCon acols
+        columnArgs = map (VarP . mkName . ("_" ++) . fst) table
+        columnNames = map (snake . fst) table
+      in do
+        mainContentExp <- [| mconcat
+            [ $(return $ LitE $ StringL $
+                "insert into " ++ snake tableName ++ " (")
+            , mconcat $ intersperse ", " columnNames, ") values ("
+            , toByteString $ mconcat $ intersperse ", "
+                $(return $ ListE $ map expMake acols)
+            , ")"
+            , if upsert then mconcat
+                [ " ON CONFLICT ("
+                , allPKNames
+                , ") DO UPDATE SET "
+                , mconcat $ intersperse ", " $ flip map columnNames $
+                    \cn -> mconcat [cn, " = EXCLUDED.", cn]
+                ]
+            else ""
+            , ";"
+            ]
+            |]
+        resultTypeSignature <- [t| IO (Either ByteString ()) |]
+        return
+            [ SigD queryName $
+                AppT (AppT ArrowT (ConT ''Connection)) $
+                    foldr (\x y -> AppT (AppT ArrowT x) y)
+                        resultTypeSignature
+                        columnTypes
+            , FunD queryName
+                [ Clause
+                    (VarP (mkName "_conn") : columnArgs)
+                    (NormalB $ AppE
+                        (AppE (VarE 'unsafePlainExec) (VarE $ mkName "_conn"))
+                        mainContentExp
+                    )
+                    []
+                ]
+            ]
   where
     queryName = mkName queryStr
     expMake AC{..} = case act of
@@ -115,6 +115,7 @@ queryUpsertBase upsert queryStr tableName = do
         escape = AppE
             (AppE (VarE 'T.replace) (AppE (VarE 'T.pack) (LitE (StringL "'"))))
             (AppE (VarE 'T.pack) (LitE (StringL "''")))
+
         defaultWrapVarE = defaultWrap . VarE
         defaultWrap f = wrap f (VarE $ mkName $ "_" ++ acn)
         wrap converter value = if acnl
@@ -122,6 +123,59 @@ queryUpsertBase upsert queryStr tableName = do
                 (AppE (AppE (VarE 'maybe) (LitE (StringL "null"))) converter)
                 value
             else AppE converter value
+
+queryGet :: String -> String -> Q [Dec]
+queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
+    let
+        columnNames = map (snake . fst) columnMap
+        acols = map snd columnMap
+        -- FIXME: support composite key (multiple primary keys)
+        pk = head $ filter acp acols
+        pkType = return $ columnTypeCon pk
+    columnTplNames <- mapM newName columnNames
+    resultTypeSignature <- [t|
+        Connection -> $(pkType) -> IO (Maybe $(return $ ConT capTabName))
+        |]
+    connArg <- newName "connArg"
+    keyArg <- newName "keyArg"
+    resultName <- newName "resultName"
+    query <- [| mconcat
+        [ $( return $ LitE $ StringL $ mconcat
+            [ "select ", mconcat $ intersperse ", " columnNames
+            , " from ", snake tableName, " where ", acn pk, " = "
+            ]
+          )
+        , $( return $ VarE keyArg )
+        , ";"
+        ]
+        |]
+    queryExp <- [| unsafeRawExec $(return $ VarE connArg) $(return query) >>=
+        either (fail . show) return
+        |]
+    stmts <- forM (zip [0 :: Integer ..] columnTplNames) $ \ (i, fname) -> do
+        unstoreExpression <- [| fmap dbUnstore
+            (PQ.getvalue' $(return $ VarE resultName) 0 (fromInteger i)) |]
+        return (BindS (VarP fname) unstoreExpression)
+    let
+        resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Just) $
+            foldr (AppE . VarE) (ConE capTabName) columnTplNames
+        doExp = DoE $ BindS (VarP resultName) queryExp : stmts ++ [resultExp]
+    return
+        [ SigD funcName resultTypeSignature
+        , FunD funcName
+            [ Clause [VarP connArg, VarP keyArg] (NormalB doExp) []
+            ]
+        ]
+  where
+    funcName = mkName funcStr
+    capTabName = mkName $ cap tableName
+
+getTable :: String -> Q Table
+getTable tableName = do
+    currentTableMap <- getCurrentTableMap
+    return $ fromMaybe (error noTable) $ lookup tableName currentTableMap
+  where
+    noTable = "Can't find the table: " ++ tableName
 
 toByteString :: Builder -> ByteString
 toByteString = LB.toStrict . B.toLazyByteString

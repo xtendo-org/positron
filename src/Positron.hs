@@ -46,14 +46,13 @@ import Positron.Driver
 import Positron.Query
 
 mkCreateAll :: Q [Dec]
-mkCreateAll = currentTableMap >>= \case
-    Nothing -> return []
-    Just tm -> [d|
+mkCreateAll = getCurrentTableMap >>= tree
+  where
+    tree tableMap = [d|
         createAll :: ByteString
         createAll = mconcat $ reverse
-            $(return $
-                ListE
-                    (map (VarE . mkName . ("create" ++) . cap . fst) tm)
+            $(return $ ListE
+                (map (VarE . mkName . ("create" ++) . cap . fst) tableMap)
             )
         |]
 
@@ -152,11 +151,3 @@ analyze (Column n t pk idx nl) = case t of
 
 for :: Functor f => f a -> (a -> b) -> f b
 for = flip fmap
-
-cap :: String -> String
-cap [] = []
-cap (c : cs) = toUpper c : cs
-
-decap :: String -> String
-decap [] = []
-decap (c : cs) = toLower c : cs

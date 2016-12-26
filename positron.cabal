@@ -18,12 +18,15 @@ library
   exposed-modules:     Positron
   other-modules:
     Positron.Alias
+    Positron.Codec
     Positron.Driver
     Positron.Import
     Positron.Types
     Positron.Unsafe
+    Positron.Util
     Positron.Query
   build-depends:
+    attoparsec >= 0.13.0.2 && < 0.14,
     bytestring >= 0.10.6.0 && < 0.11,
     postgresql-libpq >= 0.9.1.1 && < 0.10,
     scientific >= 0.3.4.7 && < 0.4,

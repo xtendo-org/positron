@@ -4,6 +4,8 @@ module Positron.Import
     , Builder
     , Text
     , snake
+    , cap
+    , decap
     ) where
 
 import Control.Concurrent.MVar as Module
@@ -28,3 +30,11 @@ snake [] = []
 snake (x : xs)
     | isUpper x = '_' : toLower x : snake xs
     | otherwise = x : snake xs
+
+cap :: String -> String
+cap [] = []
+cap (c : cs) = toUpper c : cs
+
+decap :: String -> String
+decap [] = []
+decap (c : cs) = toLower c : cs

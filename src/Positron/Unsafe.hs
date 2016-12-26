@@ -1,10 +1,10 @@
 module Positron.Unsafe
     ( TableMap
-    , ColumnMap
+    , Table
     , addMap
     , lookupColumn
     , lookupTableMap
-    , currentTableMap
+    , getCurrentTableMap
     ) where
 
 import Positron.Import
@@ -17,15 +17,15 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import Positron.Types
 
-type ColumnMap = [(String, AnalyzedColumn)]
-type TableMap = [(String, ColumnMap)]
+type Table = [(String, AnalyzedColumn)]
+type TableMap = [(String, Table)]
 type ModuleMap = [(String, TableMap)]
 
 {-# NOINLINE moduleMap #-}
 moduleMap :: IORef ModuleMap
 moduleMap = unsafePerformIO $ newIORef []
 
-addMap :: String -> (String, ColumnMap) -> Q ()
+addMap :: String -> (String, Table) -> Q ()
 addMap modName tbMap = runIO $ modifyIORef moduleMap $
     add modName tbMap
 
@@ -37,8 +37,12 @@ lookupColumn modName tabName colName = runIO $
 lookupTableMap :: String -> Q (Maybe TableMap)
 lookupTableMap modName = runIO $ lookup modName <$> readIORef moduleMap
 
-currentTableMap :: Q (Maybe TableMap)
-currentTableMap = (show <$> thisModule) >>= lookupTableMap
+getCurrentTableMap :: Q TableMap
+getCurrentTableMap = do
+    name <- show <$> thisModule
+    fromMaybe (error $ noModuleMsg ++ name) <$> lookupTableMap name
+  where
+    noModuleMsg = "Can't find the table map for the current module: "
 
 add :: Eq k => k -> v -> [(k, [v])] -> [(k, [v])]
 add k v kmap = case lookup k kmap of
