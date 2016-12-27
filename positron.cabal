@@ -18,7 +18,6 @@ library
   exposed-modules:     Positron
   other-modules:
     Positron.Alias
-    Positron.Codec
     Positron.Driver
     Positron.Import
     Positron.Types

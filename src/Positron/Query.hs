@@ -14,7 +14,6 @@ import Positron.Import
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
-import qualified Data.ByteString.Lazy as LB (toStrict)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
@@ -27,7 +26,7 @@ import qualified Database.PostgreSQL.LibPQ as PQ
 import Positron.Driver
 import Positron.Types
 import Positron.Unsafe
-import Positron.Codec
+import Positron.Util
 
 queryInsert :: String -> String -> Q [Dec]
 queryInsert = queryUpsertBase False
@@ -139,13 +138,13 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
     connArg <- newName "connArg"
     keyArg <- newName "keyArg"
     resultName <- newName "resultName"
-    query <- [| mconcat
+    query <- [| toByteString $ mconcat
         [ $( return $ LitE $ StringL $ mconcat
             [ "select ", mconcat $ intersperse ", " columnNames
             , " from ", snake tableName, " where ", acn pk, " = "
             ]
           )
-        , $( return $ VarE keyArg )
+        , dbStore $( return $ VarE keyArg )
         , ";"
         ]
         |]
@@ -153,12 +152,12 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         either (fail . show) return
         |]
     stmts <- forM (zip [0 :: Integer ..] columnTplNames) $ \ (i, fname) -> do
-        unstoreExpression <- [| fmap dbUnstore
-            (PQ.getvalue' $(return $ VarE resultName) 0 (fromInteger i)) |]
+        unstoreExpression <- [| fmap (dbUnstore . fromMaybe undefined)
+            (PQ.getvalue' $(return $ VarE resultName) 0 i) |]
         return (BindS (VarP fname) unstoreExpression)
     let
         resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Just) $
-            foldr (AppE . VarE) (ConE capTabName) columnTplNames
+            foldr (\ x y -> AppE y (VarE x)) (ConE capTabName) columnTplNames
         doExp = DoE $ BindS (VarP resultName) queryExp : stmts ++ [resultExp]
     return
         [ SigD funcName resultTypeSignature
@@ -176,6 +175,3 @@ getTable tableName = do
     return $ fromMaybe (error noTable) $ lookup tableName currentTableMap
   where
     noTable = "Can't find the table: " ++ tableName
-
-toByteString :: Builder -> ByteString
-toByteString = LB.toStrict . B.toLazyByteString
