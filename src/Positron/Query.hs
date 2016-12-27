@@ -147,9 +147,6 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         , ";"
         ]
         |]
-    queryExp <- [| unsafeRawExec $(return $ VarE connArg) $(return query) >>=
-        either (fail . show) return
-        |]
     bindPairs <- forM (zip [0 :: Integer ..] acols) $ \ (i, AC{..}) -> do
         fname <- newName acn
         unstoreExp <- if acnl
@@ -158,13 +155,21 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         getvalueExp <- [| fmap $(return unstoreExp)
             (PQ.getvalue' $(return $ VarE resultName) 0 i) |]
         return (fname, getvalueExp)
-    let
-        resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Just) $
-            foldl' (\ x y -> AppE x (VarE y)) (ConE capTabName)
-                (map fst bindPairs)
-        doExp = DoE $ BindS (VarP resultName) queryExp :
-            [BindS (VarP x) y | (x, y) <- bindPairs]
-            ++ [resultExp]
+    resultExp <- do
+        prefix <- [| return . Just |]
+        return $ NoBindS $ AppE prefix $
+            foldl' (\ x y -> AppE x (VarE y))
+                (ConE capTabName) (map fst bindPairs)
+    doExp <- [| do
+        $(return (VarP resultName)) <- unsafeRawExec
+            $(return $ VarE connArg) $(return query) >>=
+                either (fail . show) return
+        ntuples <- fmap (> 0) (PQ.ntuples $(return $ VarE resultName))
+        if ntuples
+            then $(return $ DoE $
+                [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
+            else return Nothing
+        |]
     return
         [ SigD funcName resultTypeSignature
         , FunD funcName
