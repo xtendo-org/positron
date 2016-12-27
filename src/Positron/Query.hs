@@ -131,7 +131,6 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         -- FIXME: support composite key (multiple primary keys)
         pk = head $ filter acp acols
         pkType = return $ columnTypeCon pk
-    columnTplNames <- mapM newName columnNames
     resultTypeSignature <- [t|
         Connection -> $(pkType) -> IO (Maybe $(return $ ConT capTabName))
         |]
@@ -151,14 +150,21 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
     queryExp <- [| unsafeRawExec $(return $ VarE connArg) $(return query) >>=
         either (fail . show) return
         |]
-    stmts <- forM (zip [0 :: Integer ..] columnTplNames) $ \ (i, fname) -> do
-        unstoreExpression <- [| fmap (dbUnstore . fromMaybe undefined)
+    bindPairs <- forM (zip [0 :: Integer ..] acols) $ \ (i, AC{..}) -> do
+        fname <- newName acn
+        unstoreExp <- if acnl
+            then [| fmap dbUnstore |]
+            else [| dbUnstore . fromMaybe (error "NOT NULL field is NULL") |]
+        getvalueExp <- [| fmap $(return unstoreExp)
             (PQ.getvalue' $(return $ VarE resultName) 0 i) |]
-        return (BindS (VarP fname) unstoreExpression)
+        return (fname, getvalueExp)
     let
         resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Just) $
-            foldr (\ x y -> AppE y (VarE x)) (ConE capTabName) columnTplNames
-        doExp = DoE $ BindS (VarP resultName) queryExp : stmts ++ [resultExp]
+            foldl' (\ x y -> AppE x (VarE y)) (ConE capTabName)
+                (map fst bindPairs)
+        doExp = DoE $ BindS (VarP resultName) queryExp :
+            [BindS (VarP x) y | (x, y) <- bindPairs]
+            ++ [resultExp]
     return
         [ SigD funcName resultTypeSignature
         , FunD funcName
