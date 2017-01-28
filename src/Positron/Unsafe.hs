@@ -1,7 +1,7 @@
 module Positron.Unsafe
     ( TableMap
     , Table
-    , addMap
+    , addTable
     , lookupColumn
     , lookupTableMap
     , getCurrentTableMap
@@ -25,17 +25,26 @@ type ModuleMap = [(String, TableMap)]
 moduleMap :: IORef ModuleMap
 moduleMap = unsafePerformIO $ newIORef []
 
-addMap :: String -> (String, Table) -> Q ()
-addMap modName tbMap = runIO $ modifyIORef moduleMap $
-    add modName tbMap
+addTable :: String -> (String, Table) -> Q ()
+addTable moduleName tablePair@(tableName, _) = runIO $
+    modifyIORef moduleMap modifier
+  where
+    modifier :: ModuleMap -> ModuleMap
+    modifier oldModuleMap = case lookup moduleName oldModuleMap of
+        Just oldTableMap -> let
+            newTableMap = tablePair :
+                filter (\(i, _) -> i /= tableName) oldTableMap
+          in (moduleName, newTableMap) :
+            filter (\(i, _) -> i /= moduleName) oldModuleMap
+        Nothing -> (moduleName, [tablePair]) : oldModuleMap
 
 lookupColumn :: String -> String -> String -> Q (Maybe AnalyzedColumn)
-lookupColumn modName tabName colName = runIO $
-    (lookup modName >=> lookup tabName >=> lookup colName) <$>
+lookupColumn moduleName tabName colName = runIO $
+    (lookup moduleName >=> lookup tabName >=> lookup colName) <$>
         readIORef moduleMap
 
 lookupTableMap :: String -> Q (Maybe TableMap)
-lookupTableMap modName = runIO $ lookup modName <$> readIORef moduleMap
+lookupTableMap moduleName = runIO $ lookup moduleName <$> readIORef moduleMap
 
 getCurrentTableMap :: Q TableMap
 getCurrentTableMap = do
@@ -43,8 +52,3 @@ getCurrentTableMap = do
     fromMaybe (error $ noModuleMsg ++ name) <$> lookupTableMap name
   where
     noModuleMsg = "Can't find the table map for the current module: "
-
-add :: Eq k => k -> v -> [(k, [v])] -> [(k, [v])]
-add k v kmap = case lookup k kmap of
-    Just vs -> (k, v : vs) : filter (\(i, _) -> i /= k) kmap
-    Nothing -> (k, [v]) : kmap

@@ -60,7 +60,7 @@ table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
     cols <- mapM analyze pcols
     thisModuleStr <- show <$> thisModule
-    addMap thisModuleStr (tabName, [(acn, a) | a@AC{..} <- cols])
+    addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- cols])
     let
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)

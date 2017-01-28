@@ -99,7 +99,7 @@ data AnalyzedColumn = AC
     , acnl :: !Bool -- nullable?
     , act :: !DBColumnType
     , acf :: !(Maybe (String, String)) -- foreign key?
-    }
+    } deriving Show
 
 columnTypeCon :: AnalyzedColumn -> Type
 columnTypeCon AC{..} = constructor $ case act of
