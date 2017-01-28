@@ -34,6 +34,7 @@ connect
 connect dbHost dbPort dbName dbUser dbPassword = do
     conn <- PQ.connectdb conninfo
     box <- newMVar ()
+    _ <- PQ.exec conn "SET client_min_messages TO WARNING;"
     return (Conn conn box)
   where
     conninfo = B.intercalate " " $ mapMaybe (fmap T.encodeUtf8) sources
