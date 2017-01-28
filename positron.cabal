@@ -25,12 +25,12 @@ library
     Positron.Util
     Positron.Query
   build-depends:
-    attoparsec >= 0.13.0.2 && < 0.14,
-    bytestring >= 0.10.6.0 && < 0.11,
-    postgresql-libpq >= 0.9.1.1 && < 0.10,
-    scientific >= 0.3.4.7 && < 0.4,
-    template-haskell >= 2.10.0.0 && < 3,
-    text >= 1.2.2.1 && < 2,
+    attoparsec,
+    bytestring,
+    postgresql-libpq,
+    scientific,
+    template-haskell,
+    text,
     base >= 4.7 && < 5
   default-language:    Haskell2010
   default-extensions:
