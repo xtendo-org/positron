@@ -1,7 +1,7 @@
 {-# language LambdaCase #-}
 
 module Positron.Driver
-    ( Connection(..)
+    ( Positron(..)
     , connect
     , unsafePlainExec
     , unsafeRawExec
@@ -19,10 +19,10 @@ import qualified Data.Text.Encoding as T
 
 import qualified Database.PostgreSQL.LibPQ as PQ
 
-data Connection = Conn PQ.Connection (MVar ())
+data Positron = Conn PQ.Connection (MVar ())
 
-instance Show Connection where
-    show _ = "<PostgreSQL connection>"
+instance Show Positron where
+    show _ = "<Positron object>"
 
 connect
     :: Maybe Text
@@ -30,7 +30,7 @@ connect
     -> Maybe Text
     -> Maybe Text
     -> Maybe Text
-    -> IO Connection
+    -> IO Positron
 connect dbHost dbPort dbName dbUser dbPassword = do
     conn <- PQ.connectdb conninfo
     box <- newMVar ()
@@ -46,7 +46,7 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         , fmap ("password=" <>) dbPassword
         ]
 
-unsafePlainExec :: Connection -> ByteString -> IO (Either ByteString ())
+unsafePlainExec :: Positron -> ByteString -> IO (Either ByteString ())
 unsafePlainExec (Conn conn lock) stmt = withLock lock $
     PQ.exec conn stmt >>= \case
         Nothing -> unknownError
@@ -63,7 +63,7 @@ unsafePlainExec (Conn conn lock) stmt = withLock lock $
 
 
 unsafeRawExec
-    :: Connection
+    :: Positron
     -> ByteString
     -> IO (Either ByteString PQ.Result)
 unsafeRawExec (Conn conn lock) stmt = withLock lock $

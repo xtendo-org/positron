@@ -12,7 +12,7 @@ module Positron
     , module Positron.Query
     , mkCreateAll
 
-    , Connection
+    , Positron
     , connect
     , unsafePlainExec
     , unsafeRawExec

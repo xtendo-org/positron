@@ -65,7 +65,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
         resultTypeSignature <- [t| IO (Either ByteString ()) |]
         return
             [ SigD queryName $
-                AppT (AppT ArrowT (ConT ''Connection)) $
+                AppT (AppT ArrowT (ConT ''Positron)) $
                     foldr (\x y -> AppT (AppT ArrowT x) y)
                         resultTypeSignature
                         columnTypes
@@ -132,7 +132,7 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         pk = head $ filter acp acols
         pkType = return $ columnTypeCon pk
     resultTypeSignature <- [t|
-        Connection -> $(pkType) -> IO (Maybe $(return $ ConT capTabName))
+        Positron -> $(pkType) -> IO (Maybe $(return $ ConT capTabName))
         |]
     connArg <- newName "connArg"
     keyArg <- newName "keyArg"
