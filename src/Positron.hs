@@ -28,6 +28,7 @@ module Positron
     , Word32
     , Word64
     , ByteString
+    , Text
 
     ) where
 
