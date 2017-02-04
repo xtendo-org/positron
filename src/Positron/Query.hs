@@ -36,30 +36,35 @@ queryUpsert = queryUpsertBase True
 
 queryUpsertBase :: Bool -> String -> String -> Q [Dec]
 queryUpsertBase upsert queryStr tableName = getTable tableName >>=
-    \ table -> let
+    \ rawTable -> let
+        table = filter (not . isSerial . snd) rawTable
         acols = map snd table
+        allPKNames :: String
         allPKNames = mconcat $ intersperse ", " $
             map (snake . acn) $ filter acp acols
         columnTypes = map columnTypeCon acols
         columnArgs = map (VarP . mkName . ("_" ++) . fst) table
         columnNames = map (snake . fst) table
+        insertHeadPart = LitE $ StringL $ mconcat
+            [ "insert into ", snake tableName, " ("
+            , mconcat $ intersperse ", " columnNames, ") values ("
+            ]
+        upsertClause = LitE $ StringL $ if upsert then mconcat
+            [ " ON CONFLICT ("
+            , allPKNames
+            , ") DO UPDATE SET "
+            , mconcat $ intersperse ", " $ flip map columnNames $
+                \colName -> mconcat [colName, " = EXCLUDED.", colName]
+            , ";"
+            ]
+            else ";"
       in do
         mainContentExp <- [| mconcat
-            [ $(return $ LitE $ StringL $
-                "insert into " ++ snake tableName ++ " (")
-            , mconcat $ intersperse ", " columnNames, ") values ("
+            [ $(return insertHeadPart)
             , toByteString $ mconcat $ intersperse ", "
                 $(return $ ListE $ map expMake acols)
             , ")"
-            , if upsert then mconcat
-                [ " ON CONFLICT ("
-                , allPKNames
-                , ") DO UPDATE SET "
-                , mconcat $ intersperse ", " $ flip map columnNames $
-                    \cn -> mconcat [cn, " = EXCLUDED.", cn]
-                ]
-            else ""
-            , ";"
+            , $(return upsertClause)
             ]
             |]
         resultTypeSignature <- [t| IO (Either ByteString ()) |]
@@ -122,6 +127,11 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
                 (AppE (AppE (VarE 'maybe) (LitE (StringL "null"))) converter)
                 value
             else AppE converter value
+    isSerial AC{..} = case act of
+        DBsmallserial -> True
+        DBserial -> True
+        DBbigserial -> True
+        _ -> False
 
 queryGet :: String -> String -> Q [Dec]
 queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
