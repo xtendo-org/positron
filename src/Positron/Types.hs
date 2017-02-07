@@ -21,6 +21,7 @@ data Column = Column
     , columnPrimary :: Bool
     , columnIndexed :: Bool
     , columnNullable :: Bool
+    , columnUnique :: Bool
     } deriving Show
 
 data ColumnType
@@ -72,6 +73,7 @@ data ColumnProp
     = Primary
     | Indexed
     | Nullable
+    | Unique
     deriving Show
 
 class Property v p | v -> p, p -> v where
@@ -82,6 +84,7 @@ instance Property Column ColumnProp where
         Primary -> c { columnPrimary = True }
         Indexed -> c { columnIndexed = True }
         Nullable -> c { columnNullable = True }
+        Unique -> c { columnUnique = True }
 
 instance IsString (ColumnType -> Column) where
     fromString s t = Column
@@ -90,6 +93,7 @@ instance IsString (ColumnType -> Column) where
         , columnPrimary = False
         , columnIndexed = False
         , columnNullable = False
+        , columnUnique = False
         }
 
 data AnalyzedColumn = AC
@@ -97,6 +101,7 @@ data AnalyzedColumn = AC
     , acp :: !Bool -- primary key?
     , aci :: !Bool -- indexed?
     , acnl :: !Bool -- nullable?
+    , acUnique :: !Bool -- unique?
     , act :: !DBColumnType
     , acf :: !(Maybe (String, String)) -- foreign key?
     } deriving Show

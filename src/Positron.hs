@@ -81,6 +81,7 @@ table tabName pcols = do
             , " (\n    "
             , concat $ for cols $ \AC{..} -> concat
                 [ snake acn, " ", show act
+                , if acUnique then " UNIQUE" else ""
                 , if acnl then " NULL" else " NOT NULL"
                 , ",\n    "
                 ]
@@ -121,7 +122,7 @@ table tabName pcols = do
         ]
 
 analyze :: Column -> Q AnalyzedColumn
-analyze (Column n t pk idx nl) = case t of
+analyze (Column n t pk idx nl unique) = case t of
     Psmallint -> ret DBsmallint
     Pinteger -> ret DBinteger
     Pbigint -> ret DBbigint
@@ -145,7 +146,7 @@ analyze (Column n t pk idx nl) = case t of
             Just AC{..} -> return $ acBase (plain act) (Just (tn, cn))
   where
     ret dt = return (acBase dt Nothing)
-    acBase = AC n pk idx nl
+    acBase = AC n pk idx nl unique
     plain = \case
         DBsmallserial -> DBsmallint
         DBserial -> DBinteger
