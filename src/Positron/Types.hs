@@ -11,6 +11,7 @@ module Positron.Types
     , AnalyzedColumn(..)
     , columnTypeCon
     , (//)
+    , PositronError(..)
     ) where
 
 import Positron.Import
@@ -124,3 +125,11 @@ columnTypeCon AC{..} = constructor $ case act of
     constructor = if acnl
         then AppT (ConT ''Maybe) . ConT
         else ConT
+
+data PositronError
+    = DuplicateKey
+        { duplicateKey :: Text
+        , duplicateKeyValue :: Text
+        }
+    | UnknownPositronError Text
+    deriving Show

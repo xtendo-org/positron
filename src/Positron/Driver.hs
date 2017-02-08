@@ -19,6 +19,11 @@ import qualified Data.Text.Encoding as T
 
 import qualified Database.PostgreSQL.LibPQ as PQ
 
+-- local modules
+
+import Positron.Types
+import Positron.Parser
+
 data Positron = Conn PQ.Connection (MVar ())
 
 instance Show Positron where
@@ -46,7 +51,7 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         , fmap ("password=" <>) dbPassword
         ]
 
-unsafePlainExec :: Positron -> ByteString -> IO (Either ByteString ())
+unsafePlainExec :: Positron -> ByteString -> IO (Either PositronError ())
 unsafePlainExec (Conn conn lock) stmt = withLock lock $
     PQ.exec conn stmt >>= \case
         Nothing -> unknownError
@@ -56,8 +61,12 @@ unsafePlainExec (Conn conn lock) stmt = withLock lock $
                 return (Right ())
             _ -> unknownError
   where
-    unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>
-        PQ.errorMessage conn
+    unknownError = PQ.errorMessage conn >>= \case
+        Nothing -> hopeLost
+        Just err -> case parsePQError $ T.decodeUtf8 err of
+            Left _ -> hopeLost
+            Right pErr -> return $ Left pErr
+    hopeLost = return $ Left $ UnknownPositronError "unknown PostgreSQL error"
     printStmt = B.putStr (stmt <> "\n")
     printIf s = when (s /= "") $ printStmt >> print s
 

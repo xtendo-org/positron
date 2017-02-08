@@ -67,7 +67,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             , $(return upsertClause)
             ]
             |]
-        resultTypeSignature <- [t| IO (Either ByteString ()) |]
+        resultTypeSignature <- [t| IO (Either PositronError ()) |]
         return
             [ SigD queryName $
                 AppT (AppT ArrowT (ConT ''Positron)) $

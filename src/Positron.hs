@@ -17,6 +17,8 @@ module Positron
     , unsafePlainExec
     , unsafeRawExec
 
+    , PositronError(..)
+
     -- re-export data types
     , Int16
     , Int32

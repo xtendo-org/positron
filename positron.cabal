@@ -20,10 +20,11 @@ library
     Positron.Alias
     Positron.Driver
     Positron.Import
+    Positron.Parser
+    Positron.Query
     Positron.Types
     Positron.Unsafe
     Positron.Util
-    Positron.Query
   build-depends:
     attoparsec,
     bytestring,
