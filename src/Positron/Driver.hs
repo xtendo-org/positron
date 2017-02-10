@@ -91,11 +91,11 @@ unsafePlainExec (Conn conn lock) stmt = withLock lock $
             _ -> unknownError
   where
     unknownError = PQ.errorMessage conn >>= \case
-        Nothing -> hopeLost
-        Just err -> case parsePQError $ T.decodeUtf8 err of
-            Left _ -> hopeLost
+        Nothing -> hopeLost "unknown PostgreSQL error"
+        Just bErr -> let err = T.decodeUtf8 bErr in case parsePQError err of
+            Left _ -> hopeLost err
             Right pErr -> return $ Left pErr
-    hopeLost = return $ Left $ UnknownPositronError "unknown PostgreSQL error"
+    hopeLost msg = return $ Left $ UnknownPositronError msg
     printStmt = B.putStr (stmt <> "\n")
     printIf s = when (s /= "") $ printStmt >> print s
 
