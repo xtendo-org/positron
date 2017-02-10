@@ -21,6 +21,7 @@ import Data.Scientific as Module
 import Data.String as Module
 import Data.Word as Module
 import Language.Haskell.TH as Module
+import Language.Haskell.TH.Syntax as Module
 
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)

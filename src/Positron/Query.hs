@@ -68,7 +68,8 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
             ]
     -- Register the prepared name and statement to the global store
     preparedName <- do
-        moduleName <- B.string7 . show <$> thisModule
+        moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
+            thisModule
         return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
     addPrepared (preparedName, queryStr)
 
