@@ -19,6 +19,7 @@ library
   other-modules:
     Positron.Alias
     Positron.Driver
+    Positron.Glue
     Positron.Import
     Positron.Parser
     Positron.Query

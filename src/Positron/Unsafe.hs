@@ -5,6 +5,7 @@ module Positron.Unsafe
     , lookupColumn
     , lookupTableMap
     , getCurrentTableMap
+    , addPrepared
     ) where
 
 import Positron.Import
@@ -52,3 +53,10 @@ getCurrentTableMap = do
     fromMaybe (error $ noModuleMsg ++ name) <$> lookupTableMap name
   where
     noModuleMsg = "Can't find the table map for the current module: "
+
+{-# NOINLINE prepareds #-}
+prepareds :: IORef [(ByteString, ByteString)]
+prepareds = unsafePerformIO $ newIORef []
+
+addPrepared :: (ByteString, ByteString) -> Q ()
+addPrepared pair = runIO $ modifyIORef prepareds (pair :)

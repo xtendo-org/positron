@@ -11,8 +11,9 @@ module Positron.Import
 import Control.Concurrent.MVar as Module
 import Control.Monad as Module
 import Data.Char as Module
-import Data.Int as Module
+import Data.Foldable as Module
 import Data.IORef as Module
+import Data.Int as Module
 import Data.List as Module
 import Data.Maybe as Module
 import Data.Monoid as Module
@@ -24,6 +25,8 @@ import Language.Haskell.TH as Module
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Text (Text)
+
+import Positron.Glue as Module
 
 snake :: String -> String
 snake [] = []

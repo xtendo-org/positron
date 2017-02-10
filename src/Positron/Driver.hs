@@ -3,6 +3,7 @@
 module Positron.Driver
     ( Positron(..)
     , connect
+    , unsafeExecPrepared
     , unsafePlainExec
     , unsafeRawExec
     ) where
@@ -50,6 +51,34 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         , fmap ("user=" <>) dbUser
         , fmap ("password=" <>) dbPassword
         ]
+
+unsafeExecPrepared
+    :: Positron
+    -> ByteString
+    -> [Maybe ByteString]
+    -> IO (Either PositronError ())
+unsafeExecPrepared (Conn conn lock) preparedName args = withLock lock $
+    PQ.execPrepared conn preparedName fields PQ.Binary >>= \case
+        Nothing -> unknownError
+        Just result -> PQ.resultStatus result >>= \case
+            PQ.CommandOk -> do
+                PQ.errorMessage conn >>= maybe (return ()) printIf
+                return (Right ())
+            _ -> unknownError
+  where
+    unknownError = PQ.errorMessage conn >>= \case
+        Nothing -> hopeLost "unknown PostgreSQL error"
+        Just bErr -> let err = T.decodeUtf8 bErr in case parsePQError err of
+            Left _ -> hopeLost err
+            Right pErr -> return $ Left pErr
+    hopeLost msg = return $ Left $ UnknownPositronError msg
+    -- FIXME: print something better than "preparedName" for easier debugging
+    printStmt = B.putStr (preparedName <> "\n")
+    printIf s = when (s /= "") $ printStmt >> print s
+    fields :: [Maybe (ByteString, PQ.Format)]
+    fields = map withFormatting args
+    withFormatting :: Maybe ByteString -> Maybe (ByteString, PQ.Format)
+    withFormatting = fmap $ \ x -> (x, PQ.Binary)
 
 unsafePlainExec :: Positron -> ByteString -> IO (Either PositronError ())
 unsafePlainExec (Conn conn lock) stmt = withLock lock $

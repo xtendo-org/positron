@@ -12,6 +12,7 @@ module Positron.Types
     , columnTypeCon
     , (//)
     , PositronError(..)
+    , Query(..)
     ) where
 
 import Positron.Import
@@ -133,3 +134,7 @@ data PositronError
         }
     | UnknownPositronError Text
     deriving Show
+
+data Query
+    = Insert String
+    | Select String

@@ -8,6 +8,7 @@ module Positron
     , ColumnType
     , ColumnProp(..)
     , (//)
+    , Query(..)
     , module Positron.Alias
     , module Positron.Query
     , mkCreateAll
