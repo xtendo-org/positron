@@ -91,7 +91,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
     return
         [ SigD funcName $
             AppT (AppT ArrowT (ConT ''Positron)) $
-                foldr (\x y -> AppT (AppT ArrowT x) y . columnTypeCon)
+                foldr ((\ x y -> AppT (AppT ArrowT x) y) . columnTypeCon)
                     resultTypeSignature columns
         , FunD funcName
             [ Clause
@@ -114,16 +114,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
         wrapper = if acnl
             then AppE (AppE (VarE 'fmap) binaryEncodeAST)
             else AppE (ConE 'Just) . AppE binaryEncodeAST
-        binaryEncodeAST = VarE $ case act of
-            DBsmallint      -> 'B.int16BE
-            DBinteger       -> 'B.int32BE
-            DBbigint        -> 'B.int64BE
-            DBsmallserial   -> 'B.int16BE
-            DBserial        -> 'B.int32BE
-            DBbigserial     -> 'B.int64BE
-            DBvarchar _     -> 'T.encodeUtf8
-            DBtext          -> 'T.encodeUtf8
-            x               -> error $ "encode not implemented: " ++ show x
+        binaryEncodeAST = VarE 'binaryStore
 
 queryUpsertBase :: Bool -> String -> String -> Q [Dec]
 queryUpsertBase upsert queryStr tableName = getTable tableName >>=

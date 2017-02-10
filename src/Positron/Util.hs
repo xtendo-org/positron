@@ -2,6 +2,7 @@ module Positron.Util
     ( decimal
     , toByteString
     , DBStorable(..)
+    , BinaryStorable(..)
     ) where
 
 import qualified Data.ByteString.Char8 as B
@@ -44,3 +45,15 @@ instance DBStorable Text where
         escape = T.replace "'" "''"
     dbUnstore = T.decodeUtf8
 
+-- Encode a Haskell value to a data in PostgreSQL's binary format.
+class BinaryStorable c where
+    binaryStore :: c -> ByteString
+
+instance BinaryStorable Int16 where
+    binaryStore = toByteString . B.int16BE
+instance BinaryStorable Int32 where
+    binaryStore = toByteString . B.int32Dec
+instance BinaryStorable Int64 where
+    binaryStore = toByteString . B.int64Dec
+instance BinaryStorable Text where
+    binaryStore = T.encodeUtf8
