@@ -79,6 +79,8 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
     columnTHArgs <- forM columns $ \ ac -> do
         thName <- newName $ "_" <> acn ac
         return (thName, ac)
+    -- encodedArgs: The list of arguments for the prepared statement.
+    -- Its type is [Maybe ByteString].
     let encodedArgs = ListE $ map argumentAST columnTHArgs
     -- positronArg: The argument of the type "Positron"
     positronArg <- newName "_positron"
