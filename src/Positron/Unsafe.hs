@@ -6,6 +6,7 @@ module Positron.Unsafe
     , lookupTableMap
     , getCurrentTableMap
     , addPrepared
+    , readPrepared
     ) where
 
 import Positron.Import
@@ -60,3 +61,6 @@ prepareds = unsafePerformIO $ newIORef []
 
 addPrepared :: (ByteString, ByteString) -> Q ()
 addPrepared pair = runIO $ modifyIORef prepareds (pair :)
+
+readPrepared :: IO [(ByteString, ByteString)]
+readPrepared = readIORef prepareds
