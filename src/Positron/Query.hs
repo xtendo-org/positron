@@ -224,8 +224,8 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         -- FIXME: support composite key (multiple primary keys)
         pk = head $ filter acp acols
         pkType = return $ columnTypeCon pk
-    resultTypeSignature <- [t|
-        Positron -> $(pkType) -> IO (Maybe $(return $ ConT capTabName))
+    resultTypeSignature <- positronContext <$> [t|
+        $(pkType) -> IO (Maybe $(return $ ConT capTabName))
         |]
     connArg <- newName "connArg"
     keyArg <- newName "keyArg"
