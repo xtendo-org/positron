@@ -54,6 +54,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
             , ") values ("
             , fold $ intersperse ", " $ map ("$" <>)
                 [B.intDec x | x <- [1 .. length columnNames]]
+            , ")"
             , if isUpsert then fold
                 [ " ON CONFLICT ("
                 , allPKNames
