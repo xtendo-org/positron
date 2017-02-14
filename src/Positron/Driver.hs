@@ -85,14 +85,10 @@ unsafeExecPrepared positron preparedName args = execBase positron preparedName
 
 unsafePlainExec
     :: Positron p => p -> ByteString -> IO (Either PositronError ())
-unsafePlainExec positron stmt = execBase positron stmt
-    (`PQ.exec` stmt)
+unsafePlainExec positron stmt = execBase positron stmt (`PQ.exec` stmt)
 
 unsafeRawExec
-    :: Positron p
-    => p
-    -> ByteString
-    -> IO (Either ByteString PQ.Result)
+    :: Positron p => p -> ByteString -> IO (Either ByteString PQ.Result)
 unsafeRawExec positron stmt = withLock lock $
     PQ.exec conn stmt >>= \case
         Nothing -> unknownError
