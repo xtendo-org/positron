@@ -52,8 +52,8 @@ class BinaryStorable c where
 instance BinaryStorable Int16 where
     binaryStore = toByteString . B.int16BE
 instance BinaryStorable Int32 where
-    binaryStore = toByteString . B.int32Dec
+    binaryStore = toByteString . B.int32BE
 instance BinaryStorable Int64 where
-    binaryStore = toByteString . B.int64Dec
+    binaryStore = toByteString . B.int64BE
 instance BinaryStorable Text where
     binaryStore = T.encodeUtf8
