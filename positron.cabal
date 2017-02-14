@@ -21,6 +21,7 @@ library
     Positron.Driver
     Positron.Glue
     Positron.Import
+    Positron.Instance
     Positron.Parser
     Positron.Query
     Positron.Types

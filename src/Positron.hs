@@ -11,6 +11,7 @@ module Positron
     , Query(..)
     , module Positron.Alias
     , module Positron.Query
+    , mkPositron
     , mkCreateAll
 
     , Positron
@@ -40,6 +41,7 @@ import Positron.Import
 -- extra modules
 
 import qualified Data.ByteString.Char8 as B (pack)
+import qualified Database.PostgreSQL.LibPQ as PQ
 
 -- local modules
 
@@ -48,6 +50,43 @@ import Positron.Types
 import Positron.Unsafe
 import Positron.Driver
 import Positron.Query
+
+mkPositron :: String -> Q [Dec]
+mkPositron namespace = do
+    createStmts <- mkCreateAll
+
+    -- record field names that cannot be captured
+    connField <- newName "conn"
+    connType <- [t| Connection |]
+    lockField <- newName "lock"
+    lockType <- [t| MVar () |]
+
+    let
+        rec fieldName fieldType =
+            (fieldName, Bang NoSourceUnpackedness SourceStrict, fieldType)
+        recs =
+            [ rec connField connType
+            , rec lockField lockType
+            ]
+        dataDec = DataD [] (mkName $ "Positron" <> namespace) [] Nothing
+            [RecC dataName recs] []
+
+    pairs <- runIO readPrepared
+    instanceDec <- [d|
+        instance Positron $(return $ ConT dataName) where
+            pConn = $(return $ VarE connField)
+            pLock = $(return $ VarE lockField)
+            pMake conn = do
+                -- TODO: handle prepare errors
+                forM_ pairs $ \ (stmtName, stmtQuery) ->
+                    PQ.prepare conn stmtName stmtQuery Nothing
+                lock <- newMVar ()
+                return $ $(return $ ConE dataName) conn lock
+        |]
+
+    return $ dataDec : instanceDec <> createStmts
+  where
+    dataName = mkName $ "Positron" <> namespace
 
 mkCreateAll :: Q [Dec]
 mkCreateAll = getCurrentTableMap >>= tree

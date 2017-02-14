@@ -4,7 +4,8 @@
 {-# language FunctionalDependencies #-}
 
 module Positron.Types
-    ( Column(..)
+    ( Positron(..)
+    , Column(..)
     , ColumnProp(..)
     , ColumnType(..)
     , DBColumnType(..)
@@ -16,6 +17,11 @@ module Positron.Types
     ) where
 
 import Positron.Import
+
+class Positron p where
+    pConn :: p -> Connection
+    pLock :: p -> MVar ()
+    pMake :: Connection -> IO p
 
 data Column = Column
     { columnName :: String

@@ -1,8 +1,7 @@
 {-# language LambdaCase #-}
 
 module Positron.Driver
-    ( Positron(..)
-    , connect
+    ( connect
     , unsafeExecPrepared
     , unsafePlainExec
     , unsafeRawExec
@@ -25,12 +24,6 @@ import qualified Database.PostgreSQL.LibPQ as PQ
 import Positron.Types
 import Positron.Parser
 
-class Positron p where
-    pConn :: p -> PQ.Connection
-    pLock :: p -> MVar ()
-    pPrep :: p -> [(ByteString, ByteString)]
-    pMake :: PQ.Connection -> IO p
-
 connect
     :: Positron positron
     => Maybe Text
@@ -42,7 +35,6 @@ connect
 connect dbHost dbPort dbName dbUser dbPassword = do
     conn <- PQ.connectdb conninfo
     _ <- PQ.exec conn "SET client_min_messages TO WARNING;"
-    -- TODO: handle prepare errors
     pMake conn
   where
     conninfo = B.intercalate " " $ mapMaybe (fmap T.encodeUtf8) sources
@@ -54,20 +46,18 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         , fmap ("password=" <>) dbPassword
         ]
 
-unsafeExecPrepared
-    :: Positron p
-    => p
+execBase
+    :: Positron p => p
     -> ByteString
-    -> [Maybe ByteString]
+    -> (PQ.Connection -> IO (Maybe PQ.Result))
     -> IO (Either PositronError ())
-unsafeExecPrepared positron preparedName args = withLock lock $
-    PQ.execPrepared conn preparedName fields PQ.Binary >>= \case
-        Nothing -> unknownError
-        Just result -> PQ.resultStatus result >>= \case
-            PQ.CommandOk -> do
-                PQ.errorMessage conn >>= maybe (return ()) printIf
-                return (Right ())
-            _ -> unknownError
+execBase positron errorInfo action = withLock lock $ action conn >>= \case
+    Nothing -> unknownError
+    Just result -> PQ.resultStatus result >>= \case
+        PQ.CommandOk -> do
+            PQ.errorMessage conn >>= maybe (return ()) printIf
+            return (Right ())
+        _ -> unknownError
   where
     conn = pConn positron
     lock = pLock positron
@@ -78,8 +68,16 @@ unsafeExecPrepared positron preparedName args = withLock lock $
             Right pErr -> return $ Left pErr
     hopeLost msg = return $ Left $ UnknownPositronError msg
     -- FIXME: print something better than "preparedName" for easier debugging
-    printStmt = B.putStr (preparedName <> "\n")
+    printStmt = B.putStr (errorInfo <> "\n")
     printIf s = when (s /= "") $ printStmt >> print s
+
+unsafeExecPrepared
+    :: Positron p => p
+    -> ByteString -> [Maybe ByteString] -> IO (Either PositronError ())
+unsafeExecPrepared positron preparedName args = execBase positron preparedName
+    (\ conn -> PQ.execPrepared conn preparedName fields PQ.Binary)
+  where
+    -- FIXME: print something better than "preparedName" for easier debugging
     fields :: [Maybe (ByteString, PQ.Format)]
     fields = map withFormatting args
     withFormatting :: Maybe ByteString -> Maybe (ByteString, PQ.Format)
@@ -87,26 +85,8 @@ unsafeExecPrepared positron preparedName args = withLock lock $
 
 unsafePlainExec
     :: Positron p => p -> ByteString -> IO (Either PositronError ())
-unsafePlainExec positron stmt = withLock lock $
-    PQ.exec conn stmt >>= \case
-        Nothing -> unknownError
-        Just result -> PQ.resultStatus result >>= \case
-            PQ.CommandOk -> do
-                PQ.errorMessage conn >>= maybe (return ()) printIf
-                return (Right ())
-            _ -> unknownError
-  where
-    conn = pConn positron
-    lock = pLock positron
-    unknownError = PQ.errorMessage conn >>= \case
-        Nothing -> hopeLost "unknown PostgreSQL error"
-        Just bErr -> let err = T.decodeUtf8 bErr in case parsePQError err of
-            Left _ -> hopeLost err
-            Right pErr -> return $ Left pErr
-    hopeLost msg = return $ Left $ UnknownPositronError msg
-    printStmt = B.putStr (stmt <> "\n")
-    printIf s = when (s /= "") $ printStmt >> print s
-
+unsafePlainExec positron stmt = execBase positron stmt
+    (`PQ.exec` stmt)
 
 unsafeRawExec
     :: Positron p

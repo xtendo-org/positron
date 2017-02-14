@@ -92,10 +92,9 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
         $(return encodedArgs)
         |]
     return
-        [ SigD funcName $
-            AppT (AppT ArrowT (ConT ''Positron)) $
-                foldr ((\ x y -> AppT (AppT ArrowT x) y) . columnTypeCon)
-                    resultTypeSignature columns
+        [ SigD funcName $ positronContext $
+            foldr ((\ x y -> AppT (AppT ArrowT x) y) . columnTypeCon)
+                resultTypeSignature columns
         , FunD funcName
             [ Clause
                 (VarP positronArg : map (VarP . fst) columnTHArgs)
@@ -135,14 +134,14 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             , mconcat $ intersperse ", " columnNames, ") values ("
             ]
         upsertClause = LitE $ StringL $ if upsert then mconcat
-            [ " ON CONFLICT ("
+            [ ") ON CONFLICT ("
             , allPKNames
             , ") DO UPDATE SET "
             , mconcat $ intersperse ", " $ flip map columnNames $
                 \colName -> mconcat [colName, " = EXCLUDED.", colName]
             , ";"
             ]
-            else ";"
+            else ");"
       in do
         mainContentExp <- [| mconcat
             [ $(return insertHeadPart)
@@ -154,11 +153,10 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             |]
         resultTypeSignature <- [t| IO (Either PositronError ()) |]
         return
-            [ SigD queryName $
-                AppT (AppT ArrowT (ConT ''Positron)) $
-                    foldr (\x y -> AppT (AppT ArrowT x) y)
-                        resultTypeSignature
-                        columnTypes
+            [ SigD queryName $ positronContext $
+                foldr (\x y -> AppT (AppT ArrowT x) y)
+                    resultTypeSignature
+                    columnTypes
             , FunD queryName
                 [ Clause
                     (VarP (mkName "_conn") : columnArgs)
@@ -281,3 +279,10 @@ getTable tableName = do
     return $ fromMaybe (error noTable) $ lookup tableName currentTableMap
   where
     noTable = "Can't find the table: " ++ tableName
+
+
+-- positronContext: The "Positron p => p ->" part of type signature.
+positronContext :: Type -> Type
+positronContext = let p = mkName "p" in
+    ForallT [PlainTV p] [AppT (ConT ''Positron) (VarT p)] .
+    AppT (AppT ArrowT (VarT p))
