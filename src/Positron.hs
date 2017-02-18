@@ -9,6 +9,8 @@ module Positron
     , ColumnProp(..)
     , (//)
     , Query(..)
+    , Condition
+    , whose
     , module Positron.Alias
     , module Positron.Query
     , mkPositron
@@ -102,14 +104,13 @@ mkCreateAll = getCurrentTableMap >>= tree
 
 table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
-    columns <- mapM analyze pcols
+    columns <- mapM (analyze tabName) pcols
     thisModuleStr <- show <$> thisModule
     addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- columns])
     let
         cqName = mkName $ "create" ++ capTabName
-        cqSigDec = SigD cqName (ConT ''ByteString)
         recs = for columns $ \ac@AC{..} ->
-            ( mkName $ decap tabName ++ cap acn
+            ( mkName acFullName
             , Bang
                 (if acnl then NoSourceUnpackedness else SourceUnpack)
                 SourceStrict
@@ -143,14 +144,23 @@ table tabName pcols = do
                     ]
                 else ""
             ]
+
     cqExp <- [| B.pack createQuery |]
-    let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
-    return
+    condDecs <- fmap fold <$> forM columns $ \ AC{..} -> let
+        condName = mkName $ acFullName ++ "EqParam"
+      in do
+        defAST <- [| ParamEqual acn |]
+        return
+            [ SigD condName $ ConT ''Condition
+            , ValD (VarP condName) (NormalB defAST) []
+            ]
+
+    return $
         [ DataD [] dataName [] Nothing [RecC dataName recs]
             [ConT ''Eq, ConT ''Show]
-        , cqSigDec
-        , cqValDec
-        ]
+        , SigD cqName (ConT ''ByteString)
+        , ValD (VarP cqName) (NormalB cqExp) []
+        ] ++ condDecs
   where
     snakeTabName = snake tabName
     capTabName = cap tabName
@@ -164,8 +174,8 @@ table tabName pcols = do
         , snake t, " (", snake c, ")"
         ]
 
-analyze :: Column -> Q AnalyzedColumn
-analyze (Column n t pk idx nl unique) = case t of
+analyze :: String -> Column -> Q AnalyzedColumn
+analyze tableName (Column n t pk idx nl unique) = case t of
     Psmallint -> ret DBsmallint
     Pinteger -> ret DBinteger
     Pbigint -> ret DBbigint
@@ -189,9 +199,10 @@ analyze (Column n t pk idx nl unique) = case t of
             Just AC{..} -> return $ acBase (plain act) (Just (tn, cn))
   where
     ret dt = return (acBase dt Nothing)
-    acBase = AC n pk idx nl unique
+    acBase = AC n fullName pk idx nl unique
     plain = \case
         DBsmallserial -> DBsmallint
         DBserial -> DBinteger
         DBbigserial -> DBbigint
         x -> x
+    fullName = decap tableName ++ cap n

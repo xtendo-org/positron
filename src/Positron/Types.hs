@@ -15,6 +15,7 @@ module Positron.Types
     , PositronError(..)
     , Query(..)
     , Condition(..)
+    , whose
     , DBC(..)
     ) where
 
@@ -108,6 +109,7 @@ instance IsString (ColumnType -> Column) where
 
 data AnalyzedColumn = AC
     { acn :: !String -- column name
+    , acFullName :: !String -- column name prefixed with table name
     , acp :: !Bool -- primary key?
     , aci :: !Bool -- indexed?
     , acnl :: !Bool -- nullable?
@@ -145,8 +147,18 @@ data PositronError
 
 data Query
     = Insert String
-    | Select [String] [Condition]
+    | Select
+        { selectFields :: [String]
+        , selectConditions :: [Condition]
+        }
     deriving Show
+
+-- This function may look like it has runtime errors, but it is in fact only
+-- used in the Template Haskell stage. All errors are therefore compile-time.
+whose :: Query -> [Condition] -> Query
+whose q conds = case q of
+    Insert name -> error (name ++ ": Insert cannot have conditions")
+    s@(Select _ _) -> s { selectConditions = selectConditions s ++ conds }
 
 data Condition
     = ParamEqual String
