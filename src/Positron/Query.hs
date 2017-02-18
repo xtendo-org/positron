@@ -48,7 +48,7 @@ prepareSelect funcStr targets conds = do
         columns = map snd table
         -- params: the parameters of this function. They are the parametric
         -- ("$1", "$2", etc.) part of the "where" clause.
-        params = catMaybes $ flip map conds $ \case
+        params = catMaybes $ for conds $ \case
             ParamEqual s -> let
                 msg = "parameter column not found: " <> s
                 in Just $ fromMaybe (error msg) $ lookup s table
@@ -246,7 +246,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             [ ") ON CONFLICT ("
             , allPKNames
             , ") DO UPDATE SET "
-            , mconcat $ intersperse ", " $ flip map columnNames $
+            , mconcat $ intersperse ", " $ for columnNames $
                 \colName -> mconcat [colName, " = EXCLUDED.", colName]
             , ";"
             ]

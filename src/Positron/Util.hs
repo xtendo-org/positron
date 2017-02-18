@@ -2,6 +2,7 @@ module Positron.Util
     ( toByteString
     , DBStorable(..)
     , BinaryStorable(..)
+    , for
     ) where
 
 import qualified Data.ByteString.Char8 as B
@@ -21,6 +22,9 @@ decimal = B.foldl' step 0 . B.takeWhile isDigit
 
 toByteString :: Builder -> ByteString
 toByteString = LB.toStrict . B.toLazyByteString
+
+for :: Functor f => f a -> (a -> b) -> f b
+for = flip fmap
 
 -- Convert the result from the database to a Haskell type.
 class DBStorable c where

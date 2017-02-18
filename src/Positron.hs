@@ -46,10 +46,11 @@ import qualified Database.PostgreSQL.LibPQ as PQ
 -- local modules
 
 import Positron.Alias
-import Positron.Types
-import Positron.Unsafe
 import Positron.Driver
 import Positron.Query
+import Positron.Types
+import Positron.Unsafe
+import Positron.Util
 
 mkPositron :: String -> Q [Dec]
 mkPositron namespace = do
@@ -101,27 +102,27 @@ mkCreateAll = getCurrentTableMap >>= tree
 
 table :: String -> [Column] -> Q [Dec]
 table tabName pcols = do
-    cols <- mapM analyze pcols
+    columns <- mapM analyze pcols
     thisModuleStr <- show <$> thisModule
-    addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- cols])
+    addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- columns])
     let
         cqName = mkName $ "create" ++ capTabName
         cqSigDec = SigD cqName (ConT ''ByteString)
-        recs = for cols $ \ac@AC{..} ->
+        recs = for columns $ \ac@AC{..} ->
             ( mkName $ decap tabName ++ cap acn
             , Bang
                 (if acnl then NoSourceUnpackedness else SourceUnpack)
                 SourceStrict
             , columnTypeCon ac
             )
-        primaryKeys = map (snake . acn) $ filter acp cols
-        foreignKeys = gatherFKs cols
-        indexedKeys = map (snake . acn) $ filter aci cols
+        primaryKeys = map (snake . acn) $ filter acp columns
+        foreignKeys = gatherFKs columns
+        indexedKeys = map (snake . acn) $ filter aci columns
         createQuery = concat
             [ "CREATE TABLE IF NOT EXISTS "
             , snakeTabName
             , " (\n    "
-            , concat $ for cols $ \AC{..} -> concat
+            , concat $ for columns $ \AC{..} -> concat
                 [ snake acn, " ", show act
                 , if acUnique then " UNIQUE" else ""
                 , if acnl then " NULL" else " NOT NULL"
@@ -194,8 +195,3 @@ analyze (Column n t pk idx nl unique) = case t of
         DBserial -> DBinteger
         DBbigserial -> DBbigint
         x -> x
-
--- utility functions
-
-for :: Functor f => f a -> (a -> b) -> f b
-for = flip fmap

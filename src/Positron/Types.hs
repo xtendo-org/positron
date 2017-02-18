@@ -146,16 +146,18 @@ data PositronError
 data Query
     = Insert String
     | Select [String] [Condition]
+    deriving Show
 
 data Condition
     = ParamEqual String
     | FixedEqual String DBC
+    deriving Show
 
 -- DBC: database capsule. Anything that can be stored in the database can be
--- stored in this data type. Later it will be type-checked at compile time
--- with the help of Template Haskell.
+-- stored in this data type.
 data DBC
     = DBCInt16 Int16
     | DBCInt32 Int32
     | DBCInt64 Int64
     | DBCText Text
+    deriving Show
