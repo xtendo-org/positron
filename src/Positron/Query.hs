@@ -36,9 +36,124 @@ queryUpsert :: String -> String -> Q [Dec]
 queryUpsert = queryUpsertBase True
 
 query :: String -> Query -> Q [Dec]
-query funcName = \case
-    Insert tableName -> prepareXxsert False funcName tableName
-    _ -> error "not implemented!"
+query funcStr = \case
+    Insert tableName -> prepareXxsert False funcStr tableName
+    Select targets conds -> prepareSelect funcStr targets conds
+
+prepareSelect :: String -> [String] -> [Condition] -> Q [Dec]
+prepareSelect funcStr targets conds = do
+    -- TODO: support column selection
+    table <- getTable tableName
+    let
+        columns = map snd table
+        -- params: the parameters of this function. They are the parametric
+        -- ("$1", "$2", etc.) part of the "where" clause.
+        params = catMaybes $ flip map conds $ \case
+            ParamEqual s -> let
+                msg = "parameter column not found: " <> s
+                in Just $ fromMaybe (error msg) $ lookup s table
+            _ -> Nothing
+        condBuilder _ [] = []
+        condBuilder ctr (x : xs) = case x of
+            ParamEqual fieldName ->
+                fold [B.string7 fieldName, " = $", B.word16Dec ctr] :
+                    condBuilder (ctr + 1) xs
+            FixedEqual _ _ ->
+                -- TODO: type checking
+                error "FixedEqual is not implemented"
+        queryStr = toByteString $ fold
+            [ "select "
+            , fold $ intersperse ", " $ map (B.string7 . acn) columns
+            , " from "
+            , B.string7 $ snake tableName
+            , if not (null conds) then
+                " where " <> fold (intersperse " and " $ condBuilder 1 conds)
+              else mempty
+            , ";"
+            ]
+
+    -- register to the list of prepareds
+    preparedName <- do
+        moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
+            thisModule
+        return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
+    addPrepared (preparedName, queryStr)
+
+    -- construct AST for this function
+    -- positronArg: The argument of the type "Positron"
+    positronArg <- newName "_positron"
+    -- keyTHArgs: The arguments that are used in the "where" clause
+    keyTHArgs <- forM params $ \ ac -> do
+        thName <- newName $ "_" <> acn ac
+        return (thName, ac)
+    -- encodedArgs: All function arguments that are converted into
+    -- "Maybe ByteString" so that they can be passed to unsafeExecPrepared
+    -- immediately.
+    let encodedArgs = ListE $ map argumentAST keyTHArgs
+
+    -- execResult: The name to bind the execPrepared result
+    execResultName <- newName "execResult"
+    let execResult = return $ VarE execResultName
+
+    -- typeSignature: The type signature of the resulting function.
+    -- For example,
+    -- "Positron p => p -> Int64 -> IO (Either PositronError [MyModel])"
+    typeSignature <- let
+        argTypes = map columnTypeCon params
+        applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t argTypes
+        returnValueType = [t| IO [$(r (ConT capTabName))] |]
+        in positronContext . applyArgs <$> returnValueType
+
+    rowIndexName <- newName "rowIndex"
+    let rowIndex = return $ VarE rowIndexName
+
+    -- bindPairs: pairs of binding for each field in one row.
+    -- For example, "c1 <- dbUnstore <$> PQ.getvalue' result 0 1"
+    bindPairs <- forM (zip [0 :: Int16 ..] columns) $ \ (i, AC{..}) -> do
+        fname <- newName acn
+        unstoreExp <- if acnl
+            then [| fmap dbUnstore |]
+            else [| dbUnstore . fromMaybe (error "NOT NULL field is NULL") |]
+        getvalueExp <- [| fmap $(r unstoreExp)
+            (PQ.getvalue' $(execResult) $(rowIndex) i) |]
+        return (fname, getvalueExp)
+    -- oneRowResultExp: The final line of oneRowGetter's do notation.
+    oneRowResultExp <- do
+        prefix <- [| return . Just |]
+        return $ NoBindS $ AppE prefix $
+            foldl' (\ x y -> AppE x (VarE y))
+                (ConE capTabName) (map fst bindPairs)
+
+    let
+        oneRowGetterAST = LamE [VarP rowIndexName] $ DoE $
+            [BindS (VarP x) y | (x, y) <- bindPairs] ++ [oneRowResultExp]
+
+    execPreparedAST <- [| do
+        $(r (VarP execResultName)) <- unsafeExecPrepared
+            $(r $ VarE positronArg) preparedName $(r encodedArgs)
+                >>= either (fail . show) return
+        ntuples <- PQ.ntuples $(execResult)
+        if ntuples > 0
+            then mapM [0 .. ntuples - 1] $(r oneRowGetterAST)
+            else return []
+        |]
+
+
+    return
+        [ SigD funcName typeSignature
+        , FunD funcName
+            [ Clause
+                (VarP positronArg : map (VarP . fst) keyTHArgs)
+                (NormalB execPreparedAST)
+                []
+            ]
+        ]
+  where
+    funcName = mkName funcStr
+    -- TODO: targets is not in fact always a table name
+    tableName = head targets
+    capTabName = mkName $ cap tableName
+    r = return
 
 prepareXxsert :: Bool -> String -> String -> Q [Dec]
 prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
@@ -87,7 +202,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
     positronArg <- newName "_positron"
     resultTypeSignature <- [t| IO (Either PositronError ()) |]
 
-    mainContentExp <- [| unsafeExecPrepared
+    mainContentExp <- [| either Left (const ()) <$> unsafeExecPrepared
         $(return $ VarE positronArg)
         $(return $ LitE $ StringL $ g preparedName)
         $(return encodedArgs)
@@ -111,13 +226,6 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
         DBserial -> True
         DBbigserial -> True
         _ -> False
-    -- argumentAST: Build AST of an upsert function argument
-    argumentAST (thName, AC{..}) = wrapper (VarE thName)
-      where
-        wrapper = if acnl
-            then AppE (AppE (VarE 'fmap) binaryEncodeAST)
-            else AppE (ConE 'Just) . AppE binaryEncodeAST
-        binaryEncodeAST = VarE 'binaryStore
 
 queryUpsertBase :: Bool -> String -> String -> Q [Dec]
 queryUpsertBase upsert queryStr tableName = getTable tableName >>=
@@ -287,3 +395,13 @@ positronContext :: Type -> Type
 positronContext = let p = mkName "p" in
     ForallT [PlainTV p] [AppT (ConT ''Positron) (VarT p)] .
     AppT (AppT ArrowT (VarT p))
+
+
+-- argumentAST: Build AST of a function argument
+argumentAST :: (Name, AnalyzedColumn) -> Exp
+argumentAST (thName, AC{..}) = wrapper (VarE thName)
+  where
+    wrapper = if acnl
+        then AppE (AppE (VarE 'fmap) binaryEncodeAST)
+        else AppE (ConE 'Just) . AppE binaryEncodeAST
+    binaryEncodeAST = VarE 'binaryStore

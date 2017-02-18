@@ -1,6 +1,5 @@
 module Positron.Util
-    ( decimal
-    , toByteString
+    ( toByteString
     , DBStorable(..)
     , BinaryStorable(..)
     ) where

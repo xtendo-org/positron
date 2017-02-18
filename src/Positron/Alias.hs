@@ -11,6 +11,8 @@ module Positron.Alias
     , varchar
     , foreignkey
     , text
+    , insert
+    , select
     ) where
 
 import Positron.Types
@@ -39,3 +41,9 @@ foreignkey :: String -> ColumnType
 foreignkey = Pforeignkey
 text :: ColumnType
 text = Ptext
+
+insert :: String -> Query
+insert = Insert
+
+select :: [String] -> Query
+select = (`Select` [])

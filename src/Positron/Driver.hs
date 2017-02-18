@@ -50,13 +50,12 @@ execBase
     :: Positron p => p
     -> ByteString
     -> (PQ.Connection -> IO (Maybe PQ.Result))
-    -> IO (Either PositronError ())
+    -> IO (Either PositronError PQ.Result)
 execBase positron errorInfo action = withLock lock $ action conn >>= \case
     Nothing -> unknownError
     Just result -> PQ.resultStatus result >>= \case
-        PQ.CommandOk -> do
-            PQ.errorMessage conn >>= maybe (return ()) printIf
-            return (Right ())
+        PQ.CommandOk -> returnAfterError result
+        PQ.TuplesOk -> returnAfterError result
         _ -> unknownError
   where
     conn = pConn positron
@@ -71,9 +70,13 @@ execBase positron errorInfo action = withLock lock $ action conn >>= \case
     printStmt = B.putStr (errorInfo <> "\n")
     printIf s = when (s /= "") $ printStmt >> print s
 
+    returnAfterError result = do
+        PQ.errorMessage conn >>= maybe (return ()) printIf
+        return (Right result)
+
 unsafeExecPrepared
     :: Positron p => p
-    -> ByteString -> [Maybe ByteString] -> IO (Either PositronError ())
+    -> ByteString -> [Maybe ByteString] -> IO (Either PositronError PQ.Result)
 unsafeExecPrepared positron preparedName args = execBase positron preparedName
     (\ conn -> PQ.execPrepared conn preparedName fields PQ.Binary)
   where
@@ -84,7 +87,7 @@ unsafeExecPrepared positron preparedName args = execBase positron preparedName
     withFormatting = fmap $ \ x -> (x, PQ.Binary)
 
 unsafePlainExec
-    :: Positron p => p -> ByteString -> IO (Either PositronError ())
+    :: Positron p => p -> ByteString -> IO (Either PositronError PQ.Result)
 unsafePlainExec positron stmt = execBase positron stmt (`PQ.exec` stmt)
 
 unsafeRawExec

@@ -14,6 +14,8 @@ module Positron.Types
     , (//)
     , PositronError(..)
     , Query(..)
+    , Condition(..)
+    , DBC(..)
     ) where
 
 import Positron.Import
@@ -143,4 +145,17 @@ data PositronError
 
 data Query
     = Insert String
-    | Select String
+    | Select [String] [Condition]
+
+data Condition
+    = ParamEqual String
+    | FixedEqual String DBC
+
+-- DBC: database capsule. Anything that can be stored in the database can be
+-- stored in this data type. Later it will be type-checked at compile time
+-- with the help of Template Haskell.
+data DBC
+    = DBCInt16 Int16
+    | DBCInt32 Int32
+    | DBCInt64 Int64
+    | DBCText Text
