@@ -94,7 +94,7 @@ mkCreateAll = getCurrentTableMap >>= tree
   where
     tree tableMap = [d|
         createAll :: ByteString
-        createAll = mconcat $ reverse
+        createAll = fold $ reverse
             $(return $ ListE
                 (map (VarE . mkName . ("create" ++) . cap . fst) tableMap)
             )
@@ -118,11 +118,11 @@ table tabName pcols = do
         primaryKeys = map (snake . acn) $ filter acp columns
         foreignKeys = gatherFKs columns
         indexedKeys = map (snake . acn) $ filter aci columns
-        createQuery = concat
+        createQuery = fold
             [ "CREATE TABLE IF NOT EXISTS "
             , snakeTabName
             , " (\n    "
-            , concat $ for columns $ \AC{..} -> concat
+            , fold $ for columns $ \AC{..} -> fold
                 [ snake acn, " ", show act
                 , if acUnique then " UNIQUE" else ""
                 , if acnl then " NULL" else " NOT NULL"
@@ -136,14 +136,14 @@ table tabName pcols = do
                 else ""
             , "\n);\n"
             , if indexedKeys /= []
-                then concat $ for indexedKeys $ \colName -> concat
+                then fold $ for indexedKeys $ \colName -> fold
                     [ "CREATE INDEX IF NOT EXISTS ix_"
                     , snakeTabName, "_", colName
                     , " ON ", snakeTabName, " (", colName, ");\n"
                     ]
                 else ""
             ]
-    cqExp <- [| B.pack $(return $ LitE $ StringL createQuery) |]
+    cqExp <- [| B.pack createQuery |]
     let cqValDec = ValD (VarP cqName) (NormalB cqExp) []
     return
         [ DataD [] dataName [] Nothing [RecC dataName recs]
@@ -159,7 +159,7 @@ table tabName pcols = do
     gatherFKs (AC{..} : cs) = case acf of
         Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
         Nothing -> gatherFKs cs
-    fmtFK n t c = concat
+    fmtFK n t c = fold
         [ "FOREIGN KEY(", snake n, ") REFERENCES "
         , snake t, " (", snake c, ")"
         ]
@@ -184,7 +184,7 @@ analyze (Column n t pk idx nl unique) = case t of
             cn = tail dottedColName
         thisModuleStr <- show <$> thisModule
         lookupColumn thisModuleStr tn cn >>= \case
-            Nothing -> fail $ concat
+            Nothing -> fail $ fold
                 ["Column \"", cn, "\" of Table \"", tn, "\" not found"]
             Just AC{..} -> return $ acBase (plain act) (Just (tn, cn))
   where

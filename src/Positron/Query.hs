@@ -202,7 +202,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
     positronArg <- newName "_positron"
     resultTypeSignature <- [t| IO (Either PositronError ()) |]
 
-    mainContentExp <- [| either Left (const ()) <$> unsafeExecPrepared
+    mainContentExp <- [| either Left (Right . const ()) <$> unsafeExecPrepared
         $(return $ VarE positronArg)
         $(return $ LitE $ StringL $ g preparedName)
         $(return encodedArgs)
@@ -252,7 +252,8 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             ]
             else ");"
       in do
-        mainContentExp <- [| mconcat
+        conn <- newName "conn"
+        mainQueryExp <- [| mconcat
             [ $(return insertHeadPart)
             , toByteString $ mconcat $ intersperse ", "
                 $(return $ ListE $ map expMake acols)
@@ -260,6 +261,8 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             , $(return upsertClause)
             ]
             |]
+        mainContentExp <- [| either Left (Right . const ()) <$>
+            unsafePlainExec $(return $ VarE conn) $(return $ mainQueryExp) |]
         resultTypeSignature <- [t| IO (Either PositronError ()) |]
         return
             [ SigD queryName $ positronContext $
@@ -267,14 +270,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
                     resultTypeSignature
                     columnTypes
             , FunD queryName
-                [ Clause
-                    (VarP (mkName "_conn") : columnArgs)
-                    (NormalB $ AppE
-                        (AppE (VarE 'unsafePlainExec) (VarE $ mkName "_conn"))
-                        mainContentExp
-                    )
-                    []
-                ]
+                [Clause (VarP conn : columnArgs) (NormalB mainContentExp) []]
             ]
   where
     queryName = mkName queryStr
