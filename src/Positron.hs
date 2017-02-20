@@ -43,7 +43,7 @@ import Positron.Import
 
 -- extra modules
 
-import qualified Data.ByteString.Char8 as B (pack)
+import qualified Data.ByteString.Char8 as B (pack, putStrLn)
 import qualified Database.PostgreSQL.LibPQ as PQ
 
 -- local modules
@@ -81,9 +81,19 @@ mkPositron namespace = do
             pConn = $(return $ VarE connField)
             pLock = $(return $ VarE lockField)
             pMake conn = do
-                -- TODO: handle prepare errors
-                forM_ pairs $ \ (stmtName, stmtQuery) ->
-                    PQ.prepare conn stmtName stmtQuery Nothing
+                forM_ pairs $ \ (stmtName, stmtQuery) -> let
+                    onError = do
+                        B.putStrLn stmtName
+                        B.putStrLn stmtQuery
+                        PQ.errorMessage conn >>= maybe (return ()) B.putStrLn
+                        error "PREPARE failed"
+                    in PQ.prepare conn stmtName stmtQuery Nothing >>= \case
+                        Nothing -> onError
+                        Just result -> PQ.resultStatus result >>= \ case
+                            PQ.CommandOk -> return ()
+                            PQ.TuplesOk -> return ()
+                            status -> print status >> onError
+
                 lock <- newMVar ()
                 return $ $(return $ ConE dataName) conn lock
         |]
