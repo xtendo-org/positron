@@ -12,7 +12,8 @@ module Positron.Alias
     , foreignkey
     , text
     , insert
-    , select
+    , selectModel
+    , parameter
     ) where
 
 import Positron.Types
@@ -45,5 +46,8 @@ text = Ptext
 insert :: String -> Query
 insert = Insert
 
-select :: [String] -> Query
-select = (`Select` [])
+selectModel :: String -> Query
+selectModel name = Select (SelectModel name) []
+
+parameter :: Parameter
+parameter = Parameter

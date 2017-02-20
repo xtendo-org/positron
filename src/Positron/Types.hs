@@ -3,21 +3,7 @@
 {-# language FlexibleInstances #-}
 {-# language FunctionalDependencies #-}
 
-module Positron.Types
-    ( Positron(..)
-    , Column(..)
-    , ColumnProp(..)
-    , ColumnType(..)
-    , DBColumnType(..)
-    , AnalyzedColumn(..)
-    , columnTypeCon
-    , (//)
-    , PositronError(..)
-    , Query(..)
-    , Condition(..)
-    , whose
-    , DBC(..)
-    ) where
+module Positron.Types where
 
 import Positron.Import
 
@@ -148,9 +134,14 @@ data PositronError
 data Query
     = Insert String
     | Select
-        { selectFields :: [String]
+        { selectTarget :: SelectTarget
         , selectConditions :: [Condition]
         }
+    deriving Show
+
+data SelectTarget
+    = SelectModel String
+    | SelectFields [String]
     deriving Show
 
 -- This function may look like it has runtime errors, but it is in fact only
@@ -173,3 +164,12 @@ data DBC
     | DBCInt64 Int64
     | DBCText Text
     deriving Show
+
+data Parameter = Parameter
+    deriving Show
+
+class Parametric p where
+    (.==) :: String -> p -> Condition
+
+instance Parametric Parameter where
+    name .== Parameter = ParamEqual name

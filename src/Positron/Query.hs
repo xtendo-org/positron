@@ -38,10 +38,13 @@ queryUpsert = queryUpsertBase True
 query :: String -> Query -> Q [Dec]
 query funcStr = \case
     Insert tableName -> prepareXxsert False funcStr tableName
-    Select targets conds -> prepareSelect funcStr targets conds
+    Select (SelectModel tableName) conds ->
+        prepareSelectModel funcStr tableName conds
+    Select (SelectFields _) _ -> error
+        "selecting fields is not implemented yet"
 
-prepareSelect :: String -> [String] -> [Condition] -> Q [Dec]
-prepareSelect funcStr targets conds = do
+prepareSelectModel :: String -> String -> [Condition] -> Q [Dec]
+prepareSelectModel funcStr tableName conds = do
     -- TODO: support column selection
     table <- getTable tableName
     let
@@ -63,7 +66,7 @@ prepareSelect funcStr targets conds = do
                 error "FixedEqual is not implemented"
         queryStr = toByteString $ fold
             [ "select "
-            , fold $ intersperse ", " $ map (B.string7 . acn) columns
+            , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
             , " from "
             , B.string7 $ snake tableName
             , if not (null conds) then
@@ -118,13 +121,11 @@ prepareSelect funcStr targets conds = do
             (PQ.getvalue' $(execResult) $(rowIndex) i) |]
         return (fname, getvalueExp)
     -- oneRowResultExp: The final line of oneRowGetter's do notation.
-    oneRowResultExp <- do
-        prefix <- [| return . Just |]
-        return $ NoBindS $ AppE prefix $
-            foldl' (\ x y -> AppE x (VarE y))
-                (ConE capTabName) (map fst bindPairs)
 
     let
+        oneRowResultExp = NoBindS $ AppE (VarE 'return) $
+            foldl' (\ x y -> AppE x (VarE y)) (ConE capTabName) $
+            map fst bindPairs
         oneRowGetterAST = LamE [VarP rowIndexName] $ DoE $
             [BindS (VarP x) y | (x, y) <- bindPairs] ++ [oneRowResultExp]
 
@@ -134,10 +135,9 @@ prepareSelect funcStr targets conds = do
                 >>= either (fail . show) return
         ntuples <- PQ.ntuples $(execResult)
         if ntuples > 0
-            then mapM [0 .. ntuples - 1] $(r oneRowGetterAST)
+            then forM [0 .. ntuples - 1] $(r oneRowGetterAST)
             else return []
         |]
-
 
     return
         [ SigD funcName typeSignature
@@ -150,8 +150,6 @@ prepareSelect funcStr targets conds = do
         ]
   where
     funcName = mkName funcStr
-    -- TODO: targets is not in fact always a table name
-    tableName = head targets
     capTabName = mkName $ cap tableName
     r = return
 

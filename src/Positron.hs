@@ -11,6 +11,7 @@ module Positron
     , Query(..)
     , Condition
     , whose
+    , Parametric(..)
     , module Positron.Alias
     , module Positron.Query
     , mkPositron
