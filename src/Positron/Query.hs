@@ -59,7 +59,7 @@ prepareSelectModel funcStr tableName conds = do
         condBuilder _ [] = []
         condBuilder ctr (x : xs) = case x of
             ParamEqual fieldName ->
-                fold [B.string7 fieldName, " = $", B.word16Dec ctr] :
+                fold [B.string7 (snake fieldName), " = $", B.word16Dec ctr] :
                     condBuilder (ctr + 1) xs
             FixedEqual _ _ ->
                 -- TODO: type checking
