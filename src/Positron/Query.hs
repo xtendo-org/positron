@@ -357,7 +357,7 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
             foldl' (\ x y -> AppE x (VarE y))
                 (ConE capTabName) (map fst bindPairs)
     doExp <- [| do
-        $(return (VarP resultName)) <- unsafeRawExec
+        $(return (VarP resultName)) <- unsafeExec
             $(return $ VarE connArg) $(return queryAST) >>=
                 either (fail . show) return
         ntuples <- fmap (> 0) (PQ.ntuples $(return $ VarE resultName))

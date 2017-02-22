@@ -18,7 +18,6 @@ module Positron
 
     , Positron
     , connect
-    , unsafeRawExec
 
     , PositronError(..)
 
@@ -88,7 +87,7 @@ mkPositron namespace = do
         columns = map snd columnPairs
         primaryKeys = map (snake . acn) $ filter acp columns
         indexedKeys = map (snake . acn) $ filter aci columns
-        foreignKeys = map formatForeignKey $ mapMaybes $
+        foreignKeys = map formatForeignKey $ mapMaybe
             (\ c -> fmap (\ x -> (acn c, x)) (acf c)) columns
         in fold
             [ "CREATE TABLE IF NOT EXISTS "
