@@ -29,6 +29,7 @@ library
     Positron.Util
   build-depends:
     attoparsec,
+    binary,
     bytestring,
     postgresql-libpq,
     scientific,
