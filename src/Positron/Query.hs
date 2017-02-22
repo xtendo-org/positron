@@ -260,7 +260,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             ]
             |]
         mainContentExp <- [| either Left (Right . const ()) <$>
-            unsafePlainExec $(return $ VarE conn) $(return $ mainQueryExp) |]
+            unsafeExec $(return $ VarE conn) $(return $ mainQueryExp) |]
         resultTypeSignature <- [t| IO (Either PositronError ()) |]
         return
             [ SigD queryName $ positronContext $

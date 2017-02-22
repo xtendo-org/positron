@@ -3,8 +3,7 @@
 module Positron.Driver
     ( connect
     , unsafeExecPrepared
-    , unsafePlainExec
-    , unsafeRawExec
+    , unsafeExec
     ) where
 
 import Positron.Import
@@ -35,7 +34,23 @@ connect
 connect dbHost dbPort dbName dbUser dbPassword = do
     conn <- PQ.connectdb conninfo
     _ <- PQ.exec conn "SET client_min_messages TO WARNING;"
-    pMake conn
+    positron <- pMake conn
+    unsafeExec positron (pCreateQueries positron) >>= \case
+        Right _ -> return conn
+        Left err -> fail (show err)
+    forM_ (pPrepareds positron) $ \ (stmtName, stmtQuery) -> let
+        onError = do
+            B.putStrLn stmtName
+            B.putStrLn stmtQuery
+            PQ.errorMessage conn >>= maybe (return ()) B.putStrLn
+            error "PREPARE failed"
+        in PQ.prepare conn stmtName stmtQuery Nothing >>= \case
+            Nothing -> onError
+            Just result -> PQ.resultStatus result >>= \ case
+                PQ.CommandOk -> return ()
+                PQ.TuplesOk -> return ()
+                status -> print status >> onError
+    return positron
   where
     conninfo = B.intercalate " " $ mapMaybe (fmap T.encodeUtf8) sources
     sources =
@@ -49,7 +64,7 @@ connect dbHost dbPort dbName dbUser dbPassword = do
 execBase
     :: Positron p => p
     -> ByteString
-    -> (PQ.Connection -> IO (Maybe PQ.Result))
+    -> (Connection -> IO (Maybe PQ.Result))
     -> IO (Either PositronError PQ.Result)
 execBase positron errorInfo action = withLock lock $ action conn >>= \case
     Nothing -> unknownError
@@ -86,26 +101,9 @@ unsafeExecPrepared positron preparedName args = execBase positron preparedName
     withFormatting :: Maybe ByteString -> Maybe (ByteString, PQ.Format)
     withFormatting = fmap $ \ x -> (x, PQ.Binary)
 
-unsafePlainExec
+unsafeExec
     :: Positron p => p -> ByteString -> IO (Either PositronError PQ.Result)
-unsafePlainExec positron stmt = execBase positron stmt (`PQ.exec` stmt)
-
-unsafeRawExec
-    :: Positron p => p -> ByteString -> IO (Either ByteString PQ.Result)
-unsafeRawExec positron stmt = withLock lock $
-    PQ.exec conn stmt >>= \case
-        Nothing -> unknownError
-        Just result -> PQ.resultStatus result >>= \case
-            PQ.TuplesOk -> do
-                PQ.errorMessage conn >>= maybe (return ()) printIf
-                return (Right result)
-            _ -> unknownError
-  where
-    conn = pConn positron
-    lock = pLock positron
-    unknownError = Left . fromMaybe "unknown PostgreSQL error" <$>
-        PQ.errorMessage conn
-    printIf s = when (s /= "") $ print s
+unsafeExec positron stmt = execBase positron stmt (`PQ.exec` stmt)
 
 withLock :: MVar () -> IO a -> IO a
 withLock lock action = do

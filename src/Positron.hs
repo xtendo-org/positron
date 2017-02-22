@@ -15,11 +15,9 @@ module Positron
     , module Positron.Alias
     , module Positron.Query
     , mkPositron
-    , mkCreateAll
 
     , Positron
     , connect
-    , unsafePlainExec
     , unsafeRawExec
 
     , PositronError(..)
@@ -41,11 +39,6 @@ module Positron
 
 import Positron.Import
 
--- extra modules
-
-import qualified Data.ByteString.Char8 as B (pack, putStrLn)
-import qualified Database.PostgreSQL.LibPQ as PQ
-
 -- local modules
 
 import Positron.Alias
@@ -57,8 +50,6 @@ import Positron.Util
 
 mkPositron :: String -> Q [Dec]
 mkPositron namespace = do
-    createStmts <- mkCreateAll
-
     -- record field names that cannot be captured
     connField <- newName "conn"
     connType <- [t| Connection |]
@@ -76,63 +67,32 @@ mkPositron namespace = do
             [RecC dataName recs] []
 
     pairs <- runIO readPrepared
+
+    createQueries <- fold . map buildCreateQuery <$> getCurrentTableMap
     instanceDec <- [d|
         instance Positron $(return $ ConT dataName) where
             pConn = $(return $ VarE connField)
             pLock = $(return $ VarE lockField)
+            pPrepareds = const pairs
+            pCreateQueries = const createQueries
             pMake conn = do
-                forM_ pairs $ \ (stmtName, stmtQuery) -> let
-                    onError = do
-                        B.putStrLn stmtName
-                        B.putStrLn stmtQuery
-                        PQ.errorMessage conn >>= maybe (return ()) B.putStrLn
-                        error "PREPARE failed"
-                    in PQ.prepare conn stmtName stmtQuery Nothing >>= \case
-                        Nothing -> onError
-                        Just result -> PQ.resultStatus result >>= \ case
-                            PQ.CommandOk -> return ()
-                            PQ.TuplesOk -> return ()
-                            status -> print status >> onError
-
                 lock <- newMVar ()
                 return $ $(return $ ConE dataName) conn lock
         |]
 
-    return $ dataDec : instanceDec <> createStmts
+    return $ dataDec : instanceDec
   where
     dataName = mkName $ "Positron" <> namespace
-
-mkCreateAll :: Q [Dec]
-mkCreateAll = getCurrentTableMap >>= tree
-  where
-    tree tableMap = [d|
-        createAll :: ByteString
-        createAll = fold $ reverse
-            $(return $ ListE
-                (map (VarE . mkName . ("create" ++) . cap . fst) tableMap)
-            )
-        |]
-
-table :: String -> [Column] -> Q [Dec]
-table tabName pcols = do
-    columns <- mapM (analyze tabName) pcols
-    thisModuleStr <- show <$> thisModule
-    addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- columns])
-    let
-        cqName = mkName $ "create" ++ capTabName
-        recs = for columns $ \ac@AC{..} ->
-            ( mkName acFullName
-            , Bang
-                (if acnl then NoSourceUnpackedness else SourceUnpack)
-                SourceStrict
-            , columnTypeCon ac
-            )
+    buildCreateQuery (tableName, columnPairs) = let
+        snakeTableName = snake tableName
+        columns = map snd columnPairs
         primaryKeys = map (snake . acn) $ filter acp columns
-        foreignKeys = gatherFKs columns
         indexedKeys = map (snake . acn) $ filter aci columns
-        createQuery = fold
+        foreignKeys = map formatForeignKey $ mapMaybes $
+            (\ c -> fmap (\ x -> (acn c, x)) (acf c)) columns
+        in fold
             [ "CREATE TABLE IF NOT EXISTS "
-            , snakeTabName
+            , snakeTableName
             , " (\n    "
             , fold $ for columns $ \AC{..} -> fold
                 [ snake acn, " ", show act
@@ -144,19 +104,36 @@ table tabName pcols = do
             , intercalate ", " primaryKeys
             , ")"
             , if foreignKeys /= []
-                then concatMap (",\n    " ++) foreignKeys
-                else ""
+                then foldMap (",\n    " ++) foreignKeys
+                else mempty
             , "\n);\n"
             , if indexedKeys /= []
-                then fold $ for indexedKeys $ \colName -> fold
+                then fold $ for indexedKeys $ \columnName -> fold
                     [ "CREATE INDEX IF NOT EXISTS ix_"
-                    , snakeTabName, "_", colName
-                    , " ON ", snakeTabName, " (", colName, ");\n"
+                    , snakeTableName, "_", columnName
+                    , " ON ", snakeTableName, " (", columnName, ");\n"
                     ]
-                else ""
+                else mempty
             ]
+    formatForeignKey (columnName, (targetTableName, targetColumnName)) = fold
+        [ "FOREIGN KEY(", snake columnName, ") REFERENCES "
+        , snake targetTableName, " (", snake targetColumnName, ")"
+        ]
 
-    cqExp <- [| B.pack createQuery |]
+table :: String -> [Column] -> Q [Dec]
+table tabName pcols = do
+    columns <- mapM (analyze tabName) pcols
+    thisModuleStr <- show <$> thisModule
+    addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- columns])
+    let
+        recs = for columns $ \ac@AC{..} ->
+            ( mkName acFullName
+            , Bang
+                (if acnl then NoSourceUnpackedness else SourceUnpack)
+                SourceStrict
+            , columnTypeCon ac
+            )
+
     condDecs <- fmap fold <$> forM columns $ \ AC{..} -> let
         condName = mkName $ acFullName ++ "EqParam"
       in do
@@ -167,23 +144,12 @@ table tabName pcols = do
             ]
 
     return $
-        [ DataD [] dataName [] Nothing [RecC dataName recs]
+        DataD [] dataName [] Nothing [RecC dataName recs]
             [ConT ''Eq, ConT ''Show]
-        , SigD cqName (ConT ''ByteString)
-        , ValD (VarP cqName) (NormalB cqExp) []
-        ] ++ condDecs
+        : condDecs
   where
-    snakeTabName = snake tabName
     capTabName = cap tabName
     dataName = mkName capTabName
-    gatherFKs [] = []
-    gatherFKs (AC{..} : cs) = case acf of
-        Just (tn, cn) -> fmtFK acn tn cn : gatherFKs cs
-        Nothing -> gatherFKs cs
-    fmtFK n t c = fold
-        [ "FOREIGN KEY(", snake n, ") REFERENCES "
-        , snake t, " (", snake c, ")"
-        ]
 
 analyze :: String -> Column -> Q AnalyzedColumn
 analyze tableName (Column n t pk idx nl unique) = case t of

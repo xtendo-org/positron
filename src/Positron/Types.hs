@@ -10,6 +10,10 @@ import Positron.Import
 class Positron p where
     pConn :: p -> Connection
     pLock :: p -> MVar ()
+    pPrepareds :: p -> [(ByteString, ByteString)]
+    -- NOTE: Later we might be able to make this faster by using a better
+    -- container type than a list
+    pCreateQueries :: p -> ByteString
     pMake :: Connection -> IO p
 
 data Column = Column
