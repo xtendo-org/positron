@@ -35,7 +35,7 @@ connect dbHost dbPort dbName dbUser dbPassword = do
     conn <- PQ.connectdb conninfo
     _ <- PQ.exec conn "SET client_min_messages TO WARNING;"
     positron <- pMake conn
-    unsafeExec positron (pCreateQueries positron) >>= \case
+    _ <- unsafeExec positron (pCreateQueries positron) >>= \case
         Right _ -> return conn
         Left err -> fail ("While executing CREATE queries: " <> show err)
     forM_ (pPrepareds positron) $ \ (stmtName, stmtQuery) -> let
