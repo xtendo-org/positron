@@ -67,7 +67,8 @@ mkPositron namespace = do
 
     pairs <- runIO readPrepared
 
-    createQueries <- fold . map buildCreateQuery <$> getCurrentTableMap
+    createQueries <- fold . reverse . map buildCreateQuery <$>
+        getCurrentTableMap
     instanceDec <- [d|
         instance Positron $(return $ ConT dataName) where
             pConn = $(return $ VarE connField)
