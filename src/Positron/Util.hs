@@ -5,14 +5,19 @@ module Positron.Util
     , for
     ) where
 
+import Positron.Import
+
+-- data types
+
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as LB (toStrict)
-
 import Data.Text as T
 import Data.Text.Encoding as T
 
-import Positron.Import
+-- local modules
+
+import Positron.Binary
 
 decimal :: Integral n => ByteString -> n
 -- Warning: This function is intentionally partial and should not be exposed
@@ -51,12 +56,23 @@ instance DBStorable Text where
 -- Encode a Haskell value to a data in PostgreSQL's binary format.
 class BinaryStorable c where
     binaryStore :: c -> ByteString
+    binaryUnstore :: ByteString -> c
 
 instance BinaryStorable Int16 where
     binaryStore = toByteString . B.int16BE
+    binaryUnstore = unsafeDecode
 instance BinaryStorable Int32 where
     binaryStore = toByteString . B.int32BE
+    binaryUnstore = unsafeDecode
 instance BinaryStorable Int64 where
     binaryStore = toByteString . B.int64BE
+    binaryUnstore = unsafeDecode
 instance BinaryStorable Text where
     binaryStore = T.encodeUtf8
+    binaryUnstore = T.decodeUtf8
+
+unsafeDecode :: BigEndian t => ByteString -> t
+unsafeDecode = fromMaybe (error msg) . decode
+  where
+    msg = "ByteString decoding fail due to insufficient length " <>
+        "(perhaps type mismatch?)"

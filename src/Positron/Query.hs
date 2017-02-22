@@ -115,8 +115,8 @@ prepareSelectModel funcStr tableName conds = do
     bindPairs <- forM (zip [0 :: Int16 ..] columns) $ \ (i, AC{..}) -> do
         fname <- newName acn
         unstoreExp <- if acnl
-            then [| fmap dbUnstore |]
-            else [| dbUnstore . fromMaybe (error "NOT NULL field is NULL") |]
+            then [| fmap binaryUnstore |]
+            else [| binaryUnstore . fromMaybe (error "NOT NULL field is NULL") |]
         getvalueExp <- [| fmap $(r unstoreExp)
             (PQ.getvalue' $(execResult) $(rowIndex) i) |]
         return (fname, getvalueExp)

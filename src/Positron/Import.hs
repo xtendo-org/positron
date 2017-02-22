@@ -11,6 +11,7 @@ module Positron.Import
 
 import Control.Concurrent.MVar as Module
 import Control.Monad as Module
+import Data.Bits as Module
 import Data.Char as Module
 import Data.Foldable as Module
 import Data.IORef as Module

@@ -18,6 +18,7 @@ library
   exposed-modules:     Positron
   other-modules:
     Positron.Alias
+    Positron.Binary
     Positron.Driver
     Positron.Glue
     Positron.Import
@@ -29,7 +30,6 @@ library
     Positron.Util
   build-depends:
     attoparsec,
-    binary,
     bytestring,
     postgresql-libpq,
     scientific,
