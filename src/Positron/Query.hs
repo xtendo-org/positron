@@ -284,7 +284,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
     positronArg <- newName "_positron"
     resultTypeSignature <- [t| IO (Either PositronError ()) |]
 
-    mainContentExp <- [| either Left (Right . const ()) <$> unsafeExecPrepared
+    mainContentExp <- [| fmap (const ()) <$> unsafeExecPrepared
         $(return $ VarE positronArg)
         $(return $ LitE $ StringL $ g preparedName)
         $(return encodedArgs)
@@ -343,8 +343,8 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
             , $(return upsertClause)
             ]
             |]
-        mainContentExp <- [| either Left (Right . const ()) <$>
-            unsafeExec $(return $ VarE conn) $(return $ mainQueryExp) |]
+        mainContentExp <- [| fmap (const ()) <$>
+            unsafeExec $(return $ VarE conn) $(return mainQueryExp) |]
         resultTypeSignature <- [t| IO (Either PositronError ()) |]
         return
             [ SigD queryName $ positronContext $
