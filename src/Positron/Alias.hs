@@ -13,6 +13,7 @@ module Positron.Alias
     , text
     , insert
     , selectModel
+    , getModel
     , parameter
     ) where
 
@@ -48,6 +49,9 @@ insert = Insert
 
 selectModel :: String -> Query
 selectModel name = Select (SelectModel name) []
+
+getModel :: String -> Query
+getModel = GetModel
 
 parameter :: Parameter
 parameter = Parameter
