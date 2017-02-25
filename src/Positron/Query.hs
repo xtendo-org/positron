@@ -40,8 +40,92 @@ query funcStr = \case
     Insert tableName -> prepareXxsert False funcStr tableName
     Select (SelectModel tableName) conds ->
         prepareSelectModel funcStr tableName conds
+    GetModel tableName -> getTable tableName >>= prepareGet funcStr tableName
     Select (SelectFields _) _ -> error
         "selecting fields is not implemented yet"
+
+prepareGet :: String -> String -> Table -> Q [Dec]
+prepareGet funcStr tableName table = do
+    preparedName <- do
+        moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
+            thisModule
+        return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
+    addPrepared (preparedName, queryStr)
+
+    -- construct AST for this function
+    -- positronArg: The argument of the type "Positron"
+    positronArg <- newName "_positron"
+    -- keyTHArgs: The arguments that are used in the "where" clause
+    keyTHArgs <- forM primaryKeys $ \ ac -> do
+        thName <- newName $ "_" <> acn ac
+        return (thName, ac)
+    -- encodedArgs: All function arguments that are converted into
+    -- "Maybe ByteString" so that they can be passed to unsafeExecPrepared
+    -- immediately.
+    let encodedArgs = ListE $ map argumentAST keyTHArgs
+
+    -- execResult: The name to bind the execPrepared result
+    execResultName <- newName "execResult"
+    let execResult = return $ VarE execResultName
+
+    -- typeSignature: The type signature of the resulting function.
+    -- For example,
+    -- "Positron p => p -> Int64 -> IO (Either PositronError [MyModel])"
+    typeSignature <- let
+        applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t primaryKeyCons
+        returnValueType = [t| IO (Maybe $(r (ConT capTableName))) |]
+        in positronContext . applyArgs <$> returnValueType
+
+    bindPairs <- forM (zip [0 :: Int16 ..] columns) $ \ (i, AC{..}) -> do
+        fieldName <- newName acn
+        unstoreExp <- let msg = "NOT NULL field is NULL: " <> acn in if acnl
+            then [| fmap binaryUnstore |]
+            else [| binaryUnstore . fromMaybe (error msg) |]
+        getvalueExp <- [| fmap $(r unstoreExp)
+            (PQ.getvalue $(execResult) 0 i) |]
+        return (fieldName, getvalueExp)
+
+    resultExp <- do
+        prefix <- [| return . Just |]
+        return $ NoBindS $ AppE prefix $ foldl' (\ x y -> AppE x (VarE y))
+            (ConE capTableName) (map fst bindPairs)
+
+    doExp <- [| do
+        $(r (VarP execResultName)) <- unsafeExecPrepared
+            $(r $ VarE positronArg) preparedName $(r encodedArgs)
+                >>= either (fail . show) return
+        ntuples <- PQ.ntuples $(execResult)
+        if ntuples > 0
+            then $(return $ DoE $
+                [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
+            else return Nothing
+        |]
+
+    return
+        [ SigD funcName typeSignature
+        , FunD funcName
+            [ Clause (VarP positronArg : map (VarP . fst) keyTHArgs)
+                (NormalB doExp) []
+            ]
+        ]
+
+  where
+    funcName = mkName funcStr
+    capTableName = mkName $ cap tableName
+    columns = map snd table
+    primaryKeys = filter acp columns
+    primaryKeyCons = map columnTypeCon primaryKeys
+    queryStr = toByteString $ fold
+        [ "select "
+        , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
+        , " from "
+        , B.string7 $ snake tableName
+        , " where "
+        , fold $ intersperse "," $ for (zip [1 ..] primaryKeys) $ \ (i, pk) ->
+            B.string7 (acn pk) <> " = $" <> B.word16Dec i
+        , ";"
+        ]
+    r = return
 
 prepareSelectModel :: String -> String -> [Condition] -> Q [Dec]
 prepareSelectModel funcStr tableName conds = do

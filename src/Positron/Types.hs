@@ -141,6 +141,7 @@ data Query
         { selectTarget :: SelectTarget
         , selectConditions :: [Condition]
         }
+    | GetModel String
     deriving Show
 
 data SelectTarget
