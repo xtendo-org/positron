@@ -1,6 +1,6 @@
 # Positron
 
-A Haskell database library.
+Experiment.
 
 Currently in an early-stage development.
 
