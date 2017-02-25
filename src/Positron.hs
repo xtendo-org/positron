@@ -3,7 +3,7 @@
 {-# language LambdaCase #-}
 
 module Positron
-    ( table
+    ( model
     , Column
     , ColumnType
     , ColumnProp(..)
@@ -84,7 +84,7 @@ mkPositron namespace = do
   where
     dataName = mkName $ "Positron" <> namespace
     buildCreateQuery (tableName, columnPairs) = let
-        snakeTableName = snake tableName
+        snakeTableName = snake (decap tableName)
         columns = map snd columnPairs
         primaryKeys = map (snake . acn) $ filter acp columns
         indexedKeys = map (snake . acn) $ filter aci columns
@@ -120,11 +120,11 @@ mkPositron namespace = do
         , snake targetTableName, " (", snake targetColumnName, ")"
         ]
 
-table :: String -> [Column] -> Q [Dec]
-table tabName pcols = do
-    columns <- mapM (analyze tabName) pcols
+model :: String -> [Column] -> Q [Dec]
+model tableName plainColumns = do
+    columns <- mapM (analyze tableName) plainColumns
     thisModuleStr <- show <$> thisModule
-    addTable thisModuleStr (tabName, [(acn, a) | a@AC{..} <- columns])
+    addTable thisModuleStr (tableName, [(acn, a) | a@AC{..} <- columns])
     let
         recs = for columns $ \ac@AC{..} ->
             ( mkName acFullName
@@ -148,8 +148,7 @@ table tabName pcols = do
             [ConT ''Eq, ConT ''Show]
         : condDecs
   where
-    capTabName = cap tabName
-    dataName = mkName capTabName
+    dataName = mkName tableName
 
 analyze :: String -> Column -> Q AnalyzedColumn
 analyze tableName (Column n t pk idx nl unique) = case t of

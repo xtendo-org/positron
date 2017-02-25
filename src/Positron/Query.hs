@@ -45,7 +45,7 @@ query funcStr = \case
         "selecting fields is not implemented yet"
 
 prepareGet :: String -> String -> Table -> Q [Dec]
-prepareGet funcStr tableName table = do
+prepareGet funcStr tableStr table = do
     preparedName <- do
         moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
             thisModule
@@ -73,7 +73,7 @@ prepareGet funcStr tableName table = do
     -- "Positron p => p -> Int64 -> IO (Either PositronError [MyModel])"
     typeSignature <- let
         applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t primaryKeyCons
-        returnValueType = [t| IO (Maybe $(r (ConT capTableName))) |]
+        returnValueType = [t| IO (Maybe $(r (ConT tableName))) |]
         in positronContext . applyArgs <$> returnValueType
 
     bindPairs <- forM (zip [0 :: Int16 ..] columns) $ \ (i, AC{..}) -> do
@@ -88,7 +88,7 @@ prepareGet funcStr tableName table = do
     resultExp <- do
         prefix <- [| return . Just |]
         return $ NoBindS $ AppE prefix $ foldl' (\ x y -> AppE x (VarE y))
-            (ConE capTableName) (map fst bindPairs)
+            (ConE tableName) (map fst bindPairs)
 
     doExp <- [| do
         $(r (VarP execResultName)) <- unsafeExecPrepared
@@ -111,7 +111,7 @@ prepareGet funcStr tableName table = do
 
   where
     funcName = mkName funcStr
-    capTableName = mkName $ cap tableName
+    tableName = mkName tableStr
     columns = map snd table
     primaryKeys = filter acp columns
     primaryKeyCons = map columnTypeCon primaryKeys
@@ -119,7 +119,7 @@ prepareGet funcStr tableName table = do
         [ "select "
         , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
         , " from "
-        , B.string7 $ snake tableName
+        , B.string7 $ snake $ decap tableStr
         , " where "
         , fold $ intersperse "," $ for (zip [1 ..] primaryKeys) $ \ (i, pk) ->
             B.string7 (acn pk) <> " = $" <> B.word16Dec i
@@ -128,9 +128,9 @@ prepareGet funcStr tableName table = do
     r = return
 
 prepareSelectModel :: String -> String -> [Condition] -> Q [Dec]
-prepareSelectModel funcStr tableName conds = do
+prepareSelectModel funcStr tableStr conds = do
     -- TODO: support column selection
-    table <- getTable tableName
+    table <- getTable tableStr
     let
         columns = map snd table
         -- params: the parameters of this function. They are the parametric
@@ -152,7 +152,7 @@ prepareSelectModel funcStr tableName conds = do
             [ "select "
             , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
             , " from "
-            , B.string7 $ snake tableName
+            , B.string7 $ snake $ decap tableStr
             , if not (null conds) then
                 " where " <> fold (intersperse " and " $ condBuilder 1 conds)
               else mempty
@@ -188,7 +188,7 @@ prepareSelectModel funcStr tableName conds = do
     typeSignature <- let
         argTypes = map columnTypeCon params
         applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t argTypes
-        returnValueType = [t| IO [$(r (ConT capTabName))] |]
+        returnValueType = [t| IO [$(r (ConT tableName))] |]
         in positronContext . applyArgs <$> returnValueType
 
     rowIndexName <- newName "rowIndex"
@@ -208,7 +208,7 @@ prepareSelectModel funcStr tableName conds = do
 
     let
         oneRowResultExp = NoBindS $ AppE (VarE 'return) $
-            foldl' (\ x y -> AppE x (VarE y)) (ConE capTabName) $
+            foldl' (\ x y -> AppE x (VarE y)) (ConE tableName) $
             map fst bindPairs
         oneRowGetterAST = LamE [VarP rowIndexName] $ DoE $
             [BindS (VarP x) y | (x, y) <- bindPairs] ++ [oneRowResultExp]
@@ -234,11 +234,11 @@ prepareSelectModel funcStr tableName conds = do
         ]
   where
     funcName = mkName funcStr
-    capTabName = mkName $ cap tableName
+    tableName = mkName tableStr
     r = return
 
 prepareXxsert :: Bool -> String -> String -> Q [Dec]
-prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
+prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
     let
         table = filter (not . isSerial . snd) rawTable
         columns = map snd table
@@ -246,7 +246,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
             map (B.string7 . snake . acn) $ filter acp columns
         columnNames = map (snake . fst) table
         queryStr = toByteString $ fold
-            [ "insert into ", B.string7 $ snake tableName, " ("
+            [ "insert into ", B.string7 $ snake $ decap tableStr, " ("
             , fold $ B.string7 <$> intersperse ", " columnNames
             , ") values ("
             , fold $ intersperse ", " $ map ("$" <>)
@@ -302,7 +302,7 @@ prepareXxsert isUpsert funcStr tableName = withTable $ \ rawTable -> do
         ]
   where
     funcName = mkName funcStr
-    withTable f = getTable tableName >>= f
+    withTable f = getTable tableStr >>= f
     isSerial AC{..} = case act of
         DBsmallserial -> True
         DBserial -> True
@@ -321,7 +321,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
         columnArgs = map (VarP . mkName . ("_" ++) . fst) table
         columnNames = map (snake . fst) table
         insertHeadPart = LitE $ StringL $ mconcat
-            [ "insert into ", snake tableName, " ("
+            [ "insert into ", snake $ decap tableName, " ("
             , mconcat $ intersperse ", " columnNames, ") values ("
             ]
         upsertClause = LitE $ StringL $ if upsert then mconcat
@@ -404,7 +404,7 @@ queryUpsertBase upsert queryStr tableName = getTable tableName >>=
         _ -> False
 
 queryGet :: String -> String -> Q [Dec]
-queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
+queryGet funcStr tableStr = getTable tableStr >>= \ columnMap -> do
     let
         columnNames = map (snake . fst) columnMap
         acols = map snd columnMap
@@ -412,7 +412,7 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         pk = head $ filter acp acols
         pkType = return $ columnTypeCon pk
     resultTypeSignature <- positronContext <$> [t|
-        $(pkType) -> IO (Maybe $(return $ ConT capTabName))
+        $(pkType) -> IO (Maybe $(return $ ConT tableName))
         |]
     connArg <- newName "connArg"
     keyArg <- newName "keyArg"
@@ -420,7 +420,7 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
     queryAST <- [| toByteString $ mconcat
         [ $( return $ LitE $ StringL $ mconcat
             [ "select ", mconcat $ intersperse ", " columnNames
-            , " from ", snake tableName, " where ", acn pk, " = "
+            , " from ", snake $ decap tableStr, " where ", acn pk, " = "
             ]
           )
         , dbStore $( return $ VarE keyArg )
@@ -439,7 +439,7 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         prefix <- [| return . Just |]
         return $ NoBindS $ AppE prefix $
             foldl' (\ x y -> AppE x (VarE y))
-                (ConE capTabName) (map fst bindPairs)
+                (ConE tableName) (map fst bindPairs)
     doExp <- [| do
         $(return (VarP resultName)) <- unsafeExec
             $(return $ VarE connArg) $(return queryAST) >>=
@@ -458,7 +458,7 @@ queryGet funcStr tableName = getTable tableName >>= \ columnMap -> do
         ]
   where
     funcName = mkName funcStr
-    capTabName = mkName $ cap tableName
+    tableName = mkName tableStr
 
 getTable :: String -> Q Table
 getTable tableName = do
