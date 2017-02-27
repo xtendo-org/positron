@@ -70,32 +70,31 @@ instance Show DBColumnType where
         DBvarchar len -> "varchar(" ++ show len ++ ")"
         DBtext -> "text"
 
-data ColumnProp
+data Property
     = Primary
     | Indexed
     | Nullable
     | Unique
     deriving Show
 
-class Property v p | v -> p, p -> v where
-    (//) :: v -> p -> v
-
-instance Property Column ColumnProp where
-    c // p = case p of
+(//) :: Column -> [Property] -> Column
+(//)  = foldl' f
+  where
+    f c p = case p of
         Primary -> c { columnPrimary = True }
         Indexed -> c { columnIndexed = True }
         Nullable -> c { columnNullable = True }
         Unique -> c { columnUnique = True }
 
-instance IsString (ColumnType -> Column) where
-    fromString s t = Column
-        { columnName = s
-        , columnType = t
-        , columnPrimary = False
-        , columnIndexed = False
-        , columnNullable = False
-        , columnUnique = False
-        }
+defaultColumn :: ColumnType -> String -> Column
+defaultColumn t s = Column
+    { columnName = s
+    , columnType = t
+    , columnPrimary = False
+    , columnIndexed = False
+    , columnNullable = False
+    , columnUnique = False
+    }
 
 data AnalyzedColumn = AC
     { acn :: !String -- column name

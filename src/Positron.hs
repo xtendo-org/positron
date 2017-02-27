@@ -5,8 +5,7 @@
 module Positron
     ( model
     , Column
-    , ColumnType
-    , ColumnProp(..)
+    , Property(..)
     , (//)
     , Query(..)
     , Condition

@@ -19,30 +19,30 @@ module Positron.Alias
 
 import Positron.Types
 
-smallint :: ColumnType
-smallint = Psmallint
-integer :: ColumnType
-integer = Pinteger
-bigint :: ColumnType
-bigint = Pbigint
-decimal :: ColumnType
-decimal = Pdecimal
-numeric :: ColumnType
-numeric = Pnumeric
-real :: ColumnType
-real = Preal
-double :: ColumnType
-double = Pdouble
-serial :: ColumnType
-serial = Pserial
-bigserial :: ColumnType
-bigserial = Pbigserial
-varchar :: Integer -> ColumnType
-varchar = Pvarchar
-foreignkey :: String -> ColumnType
-foreignkey = Pforeignkey
-text :: ColumnType
-text = Ptext
+smallint :: String -> Column
+smallint = defaultColumn Psmallint
+integer :: String -> Column
+integer = defaultColumn Pinteger
+bigint :: String -> Column
+bigint = defaultColumn Pbigint
+decimal :: String -> Column
+decimal = defaultColumn Pdecimal
+numeric :: String -> Column
+numeric = defaultColumn Pnumeric
+real :: String -> Column
+real = defaultColumn Preal
+double :: String -> Column
+double = defaultColumn Pdouble
+serial :: String -> Column
+serial = defaultColumn Pserial
+bigserial :: String -> Column
+bigserial = defaultColumn Pbigserial
+varchar :: Integer -> String -> Column
+varchar n = defaultColumn (Pvarchar n)
+foreignkey :: String -> String -> Column
+foreignkey target = defaultColumn (Pforeignkey target)
+text :: String -> Column
+text = defaultColumn Ptext
 
 insert :: String -> Query
 insert = Insert
