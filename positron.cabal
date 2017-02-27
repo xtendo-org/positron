@@ -37,7 +37,10 @@ library
     base >= 4.7 && < 5
   default-language:    Haskell2010
   default-extensions:
+    LambdaCase
     OverloadedStrings
+    RecordWildCards
+    TemplateHaskell
 
 test-suite positron-test
   type:                exitcode-stdio-1.0

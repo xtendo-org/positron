@@ -1,8 +1,3 @@
-{-# language TemplateHaskell #-}
-{-# language RecordWildCards #-}
-{-# language FlexibleInstances #-}
-{-# language FunctionalDependencies #-}
-
 module Positron.Types where
 
 import Positron.Import

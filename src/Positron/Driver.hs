@@ -1,5 +1,3 @@
-{-# language LambdaCase #-}
-
 module Positron.Driver
     ( connect
     , unsafeExecPrepared

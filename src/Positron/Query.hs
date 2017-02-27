@@ -1,7 +1,3 @@
-{-# language TemplateHaskell #-}
-{-# language RecordWildCards #-}
-{-# language LambdaCase #-}
-
 module Positron.Query
     ( query
     , queryInsert

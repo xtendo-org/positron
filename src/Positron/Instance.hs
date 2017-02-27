@@ -1,5 +1,4 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# language TemplateHaskell #-}
 
 module Positron.Instance where
 
