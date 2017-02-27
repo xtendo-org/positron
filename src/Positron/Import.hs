@@ -30,7 +30,6 @@ import Data.ByteString.Builder (Builder)
 import Data.Text (Text)
 import Database.PostgreSQL.LibPQ (Connection)
 
-import Positron.Glue as Module
 import Positron.Instance as Module ()
 
 snake :: String -> String

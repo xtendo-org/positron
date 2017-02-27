@@ -20,7 +20,6 @@ library
     Positron.Alias
     Positron.Binary
     Positron.Driver
-    Positron.Glue
     Positron.Import
     Positron.Instance
     Positron.Parser

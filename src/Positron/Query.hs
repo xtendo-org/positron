@@ -286,7 +286,7 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
 
     mainContentExp <- [| fmap (const ()) <$> unsafeExecPrepared
         $(return $ VarE positronArg)
-        $(return $ LitE $ StringL $ g preparedName)
+        $(return $ LitE $ StringL $ T.unpack $ T.decodeUtf8 preparedName)
         $(return encodedArgs)
         |]
     return
