@@ -154,6 +154,7 @@ whose :: Query -> [Condition] -> Query
 whose q conds = case q of
     Insert name -> error (name ++ ": Insert cannot have conditions")
     s@(Select _ _) -> s { selectConditions = selectConditions s ++ conds }
+    GetModel name -> error (name ++ ": Insert cannot have conditions")
 
 data Condition
     = ParamEqual String
