@@ -114,7 +114,7 @@ mkPositron namespace = do
             ]
     formatForeignKey (columnName, (targetTableName, targetColumnName)) = fold
         [ "FOREIGN KEY(", snake columnName, ") REFERENCES "
-        , snake targetTableName, " (", snake targetColumnName, ")"
+        , targetTableName, " (", snake targetColumnName, ")"
         ]
 
 model :: String -> [Column] -> Q [Dec]
