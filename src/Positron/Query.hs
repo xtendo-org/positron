@@ -279,8 +279,9 @@ prepareSelectModel funcStr tableStr conds = do
 prepareXxsert :: Bool -> String -> String -> Q [Dec]
 prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
     let
-        table = filter (not . isSerial . snd) rawTable
+        (table, serialPairs) = partition (not . isSerial . snd) rawTable
         columns = map snd table
+        serials = map snd serialPairs
         allPKNames = fold $ intersperse ", " $
             map (B.string7 . snake . acn) $ filter acp columns
         columnNames = map (snake . fst) table
@@ -301,6 +302,10 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
                     columnNames
                 ]
               else mempty
+            , if null serialPairs
+                then mempty
+                else (" returning " <>) $ fold $ intersperse ", " $
+                    map (B.string7 . fst) serialPairs
             , ";"
             ]
     -- Register the prepared name and statement to the global store
@@ -318,12 +323,33 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
     let encodedArgs = ListE $ map argumentAST columnTHArgs
     -- positronArg: The argument of the type "Positron"
     positronArg <- newName "_positron"
-    resultTypeSignature <- [t| IO (Either PositronError ()) |]
 
-    mainContentExp <- [| fmap (const ()) <$> unsafeExecPrepared
-        $(return $ VarE positronArg)
-        $(return $ LitE $ StringL $ T.unpack $ T.decodeUtf8 preparedName)
-        $(return encodedArgs)
+    execResultName <- newName "execResult"
+    let execResult = return $ VarE execResultName
+
+    resultTypeSignature <- let
+        serialsType = return $ foldl AppT (TupleT $ length serials) $
+            map columnTypeCon serials
+        in [t| IO (Either PositronError $(serialsType)) |]
+
+    bindPairs <- forM (zip [0 :: Word16 ..] serials) $ \ (i, AC{..}) -> do
+        fieldName <- newName acn
+        unstoreExp <- let msg = "NOT NULL field is NULL: " <> acn in if acnl
+            then [| fmap binaryUnstore |]
+            else [| binaryUnstore . fromMaybe (error msg) |]
+        getvalueExp <- [| fmap $(return unstoreExp)
+            (PQ.getvalue $(execResult) 0 i) |]
+        return (fieldName, getvalueExp)
+    let
+        resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Right) $
+            TupE $ map (VarE . fst) bindPairs
+
+    mainContentExp <- [| unsafeExecPrepared
+        $(return $ VarE positronArg) preparedName
+        $(return encodedArgs) >>= \case
+            Left e -> return (Left e)
+            Right $(return (VarP execResultName)) -> $(return $ DoE $
+                [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
         |]
     return
         [ SigD funcName $ positronContext $
