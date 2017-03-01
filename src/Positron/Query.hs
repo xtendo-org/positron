@@ -42,10 +42,7 @@ query funcStr = \case
 
 prepareGet :: String -> String -> Table -> Q [Dec]
 prepareGet funcStr tableStr table = do
-    preparedName <- do
-        moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
-            thisModule
-        return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
+    preparedName <- getPreparedName funcStr
     addPrepared (preparedName, queryStr)
 
     -- construct AST for this function
@@ -156,10 +153,7 @@ prepareSelectModel funcStr tableStr conds = do
             ]
 
     -- register to the list of prepareds
-    preparedName <- do
-        moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
-            thisModule
-        return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
+    preparedName <- getPreparedName funcStr
     addPrepared (preparedName, queryStr)
 
     -- construct AST for this function
@@ -261,10 +255,7 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
             , ";"
             ]
     -- Register the prepared name and statement to the global store
-    preparedName <- do
-        moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$>
-            thisModule
-        return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
+    preparedName <- getPreparedName funcStr
     addPrepared (preparedName, queryStr)
 
     -- Build AST for the query function
@@ -479,3 +470,8 @@ argumentAST (thName, AC{..}) = wrapper (VarE thName)
         then AppE (AppE (VarE 'fmap) binaryEncodeAST)
         else AppE (ConE 'Just) . AppE binaryEncodeAST
     binaryEncodeAST = VarE 'binaryStore
+
+getPreparedName :: String -> Q ByteString
+getPreparedName funcStr = do
+    moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$> thisModule
+    return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
