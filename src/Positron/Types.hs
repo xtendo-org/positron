@@ -136,6 +136,11 @@ data Query
         , selectConditions :: [Condition]
         }
     | GetModel String
+    | Update
+        { updateTable :: String
+        , updateColumns :: [SetValue]
+        , updateConditions :: [Condition]
+        }
     deriving Show
 
 data SelectTarget
@@ -148,8 +153,15 @@ data SelectTarget
 whose :: Query -> [Condition] -> Query
 whose q conds = case q of
     Insert name -> error (name ++ ": Insert cannot have conditions")
-    s@(Select _ _) -> s { selectConditions = selectConditions s ++ conds }
-    GetModel name -> error (name ++ ": Insert cannot have conditions")
+    s@Select {} -> s { selectConditions = selectConditions s ++ conds }
+    GetModel name -> error (name ++ ": GetModel cannot have conditions")
+    u@Update {} -> u { updateConditions = updateConditions u ++ conds }
+
+newtype SetValue = SetValue { unSetValue :: Condition }
+    deriving Show
+
+(?=) :: String -> Parameter -> SetValue
+name ?= Parameter = SetValue (ParamEqual name)
 
 data Condition
     = ParamEqual String

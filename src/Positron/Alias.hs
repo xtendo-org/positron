@@ -14,6 +14,7 @@ module Positron.Alias
     , insert
     , selectModel
     , getModel
+    , update
     , parameter
     ) where
 
@@ -52,6 +53,9 @@ selectModel name = Select (SelectModel name) []
 
 getModel :: String -> Query
 getModel = GetModel
+
+update :: String -> [SetValue] -> Query
+update name setValues = Update name setValues []
 
 parameter :: Parameter
 parameter = Parameter

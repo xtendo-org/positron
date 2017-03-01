@@ -4,6 +4,8 @@ module Positron
     , Property(..)
     , (//)
     , Query(..)
+    , SetValue
+    , (?=)
     , Condition
     , whose
     , Parametric(..)

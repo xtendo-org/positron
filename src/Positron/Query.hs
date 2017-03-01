@@ -33,12 +33,69 @@ queryUpsert = queryUpsertBase True
 
 query :: String -> Query -> Q [Dec]
 query funcStr = \case
-    Insert tableName -> prepareXxsert False funcStr tableName
-    Select (SelectModel tableName) conds ->
-        prepareSelectModel funcStr tableName conds
-    GetModel tableName -> getTable tableName >>= prepareGet funcStr tableName
+    Insert tableStr -> prepareXxsert False funcStr tableStr
+    Select (SelectModel tableStr) conds ->
+        prepareSelectModel funcStr tableStr conds
+    GetModel tableStr -> getTable tableStr >>= prepareGet funcStr tableStr
     Select (SelectFields _) _ -> error
         "selecting fields is not implemented yet"
+    Update tableStr setValues conds -> getTable tableStr >>=
+        prepareUpdate funcStr tableStr setValues conds
+
+mkPrepare
+    :: String
+    -> ByteString
+    -> (Name -> ByteString -> Q (Type, [Pat], Exp))
+    -> Q [Dec]
+mkPrepare funcStr queryStr construct = do
+    preparedName <- getPreparedName funcStr
+    addPrepared (preparedName, queryStr)
+
+    positronArg <- newName "_positron"
+    (typeSignature, patterns, bodyExp) <- construct positronArg preparedName
+    return
+        [ SigD funcName (positronContext typeSignature)
+        , FunD funcName
+            [Clause (VarP positronArg : patterns) (NormalB bodyExp) []]
+        ]
+
+  where
+    funcName = mkName funcStr
+
+prepareUpdate
+    :: String -> String -> [SetValue] -> [Condition] -> Table -> Q [Dec]
+prepareUpdate funcStr tableStr setValues conds table =
+    mkPrepare funcStr queryStr $ \ positronArg preparedName -> do
+        keyTHArgs <- forM params $ \ ac -> do
+            thName <- newName $ "_" <> acn ac
+            return (thName, ac)
+        let encodedArgs = ListE $ map argumentAST keyTHArgs
+        typeSignature <- let
+            argTypes = map columnTypeCon params
+            applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t argTypes
+            returnValueType = [t| IO (Either PositronError ()) |]
+            in applyArgs <$> returnValueType
+        mainContentExp <- [| fmap (const ()) <$> unsafeExecPrepared
+            $(return $ VarE positronArg)
+            $(return $ LitE $ StringL $ T.unpack $ T.decodeUtf8 preparedName)
+            $(return encodedArgs)
+            |]
+        return (typeSignature, map (VarP . fst) keyTHArgs, mainContentExp)
+  where
+    queryStr = toByteString $ fold
+        [ "update "
+        , B.string7 $ snake $ decap tableStr
+        , " set "
+        , fold $ intersperse ", " $ condBuilder 1 setValueConds
+        , if not (null conds) then
+            " where " <> fold
+                (intersperse " and " $ condBuilder condStartsAt conds)
+          else mempty
+        , ";"
+        ]
+    condStartsAt = length setValues + 1
+    setValueConds = map unSetValue setValues
+    params = getParamColumns table (setValueConds ++ conds)
 
 prepareGet :: String -> String -> Table -> Q [Dec]
 prepareGet funcStr tableStr table = do
@@ -133,14 +190,6 @@ prepareSelectModel funcStr tableStr conds = do
                 msg = "parameter column not found: " <> s
                 in Just $ fromMaybe (error msg) $ lookup s table
             _ -> Nothing
-        condBuilder _ [] = []
-        condBuilder ctr (x : xs) = case x of
-            ParamEqual fieldName ->
-                fold [B.string7 (snake fieldName), " = $", B.word16Dec ctr] :
-                    condBuilder (ctr + 1) xs
-            FixedEqual _ _ ->
-                -- TODO: type checking
-                error "FixedEqual is not implemented"
         queryStr = toByteString $ fold
             [ "select "
             , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
@@ -475,3 +524,21 @@ getPreparedName :: String -> Q ByteString
 getPreparedName funcStr = do
     moduleName <- B.string7 . (\ (Module _ (ModName s)) -> s) <$> thisModule
     return $ toByteString $ fold [moduleName, ".", B.string7 funcStr]
+
+condBuilder :: Int -> [Condition] -> [Builder]
+condBuilder _ [] = []
+condBuilder ctr (x : xs) = case x of
+    ParamEqual fieldName ->
+        fold [B.string7 (snake fieldName), " = $", B.intDec ctr] :
+            condBuilder (ctr + 1) xs
+    FixedEqual _ _ ->
+        -- TODO: type checking
+        error "FixedEqual is not implemented"
+
+getParamColumns
+    :: [(String, AnalyzedColumn)] -> [Condition] -> [AnalyzedColumn]
+getParamColumns table conds = catMaybes $ for conds $ \case
+    ParamEqual s -> let
+        msg = "parameter column not found: " <> s
+        in Just $ fromMaybe (error msg) $ lookup s table
+    _ -> Nothing
