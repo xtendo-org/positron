@@ -348,7 +348,7 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
         $(return $ VarE positronArg) preparedName
         $(return encodedArgs) >>= \case
             Left e -> return (Left e)
-            Right $(return (VarP execResultName)) -> $(return $ DoE $
+            Right _ -> $(return $ DoE $
                 [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
         |]
     return
