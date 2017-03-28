@@ -1,6 +1,27 @@
-module Positron.Types where
+module Positron.Types
+    ( Positron(..)
+    , Column(..)
+    , ColumnType(..)
+    , DBColumnType(..)
+    , Property(..)
+    , (//)
+    , defaultColumn
+    , AnalyzedColumn(..)
+    , columnTypeCon
+    , PositronError(..)
+    , Query(..)
+    , SelectTarget(..)
+    , whose
+    , Parameter(..)
+    , Condition(..)
+    , (.==)
+    , SetValue(..)
+    , (?=)
+    ) where
 
 import Positron.Import
+
+import Positron.Types.MissingMethods
 
 class Positron p where
     pConn :: p -> Connection
@@ -157,31 +178,14 @@ whose q conds = case q of
     GetModel name -> error (name ++ ": GetModel cannot have conditions")
     u@Update {} -> u { updateConditions = updateConditions u ++ conds }
 
+data Condition = Condition String Parameter
+    deriving Show
+
+(.==) :: String -> Parameter -> Condition
+(.==) = Condition
+
 newtype SetValue = SetValue { unSetValue :: Condition }
     deriving Show
 
 (?=) :: String -> Parameter -> SetValue
-name ?= Parameter = SetValue (ParamEqual name)
-
-data Condition
-    = ParamEqual String
-    | FixedEqual String DBC
-    deriving Show
-
--- DBC: database capsule. Anything that can be stored in the database can be
--- stored in this data type.
-data DBC
-    = DBCInt16 Int16
-    | DBCInt32 Int32
-    | DBCInt64 Int64
-    | DBCText Text
-    deriving Show
-
-data Parameter = Parameter
-    deriving Show
-
-class Parametric p where
-    (.==) :: String -> p -> Condition
-
-instance Parametric Parameter where
-    name .== Parameter = ParamEqual name
+name ?= parameter = SetValue (Condition name parameter)

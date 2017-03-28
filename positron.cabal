@@ -25,6 +25,7 @@ library
     Positron.Parser
     Positron.Query
     Positron.Types
+    Positron.Types.MissingMethods
     Positron.Unsafe
     Positron.Util
   build-depends:

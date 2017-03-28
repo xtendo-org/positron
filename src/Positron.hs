@@ -4,11 +4,12 @@ module Positron
     , Property(..)
     , (//)
     , Query(..)
+    , Condition
+    , (.==)
     , SetValue
     , (?=)
-    , Condition
     , whose
-    , Parametric(..)
+    , Parameter(..)
     , module Positron.Alias
     , module Positron.Query
     , mkPositron
@@ -134,7 +135,7 @@ model tableName plainColumns = do
     condDecs <- fmap fold <$> forM columns $ \ AC{..} -> let
         condName = mkName $ acFullName ++ "EqParam"
       in do
-        defAST <- [| ParamEqual acn |]
+        defAST <- [| Condition acn Parameter |]
         return
             [ SigD condName $ ConT ''Condition
             , ValD (VarP condName) (NormalB defAST) []

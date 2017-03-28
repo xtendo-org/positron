@@ -185,11 +185,7 @@ prepareSelectModel funcStr tableStr conds = do
         columns = map snd table
         -- params: the parameters of this function. They are the parametric
         -- ("$1", "$2", etc.) part of the "where" clause.
-        params = catMaybes $ for conds $ \case
-            ParamEqual s -> let
-                msg = "parameter column not found: " <> s
-                in Just $ fromMaybe (error msg) $ lookup s table
-            _ -> Nothing
+        params = getParamColumns table conds
         queryStr = toByteString $ fold
             [ "select "
             , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
@@ -554,17 +550,17 @@ getPreparedName funcStr = do
 condBuilder :: Int -> [Condition] -> [Builder]
 condBuilder _ [] = []
 condBuilder ctr (x : xs) = case x of
-    ParamEqual fieldName ->
+    Condition fieldName Parameter ->
         fold [B.string7 (snake fieldName), " = $", B.intDec ctr] :
             condBuilder (ctr + 1) xs
-    FixedEqual _ _ ->
+    _ ->
         -- TODO: type checking
-        error "FixedEqual is not implemented"
+        error "Fixed parameter is not implemented"
 
 getParamColumns
     :: [(String, AnalyzedColumn)] -> [Condition] -> [AnalyzedColumn]
 getParamColumns table conds = catMaybes $ for conds $ \case
-    ParamEqual s -> let
-        msg = "parameter column not found: " <> s
-        in Just $ fromMaybe (error msg) $ lookup s table
+    Condition fieldName Parameter -> let
+        msg = "parameter column not found: " <> fieldName
+        in Just $ fromMaybe (error msg) $ lookup fieldName table
     _ -> Nothing
