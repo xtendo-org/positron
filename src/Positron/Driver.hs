@@ -1,5 +1,14 @@
 module Positron.Driver
-    ( connect
+    ( ConnConf
+    , defaultConnConf
+    , setDBHost
+    , setDBPort
+    , setDBName
+    , setDBUser
+    , setDBPassword
+    , connect
+    , close
+    , withDatabase
     , unsafeExecPrepared
     , unsafeExec
     ) where
@@ -21,15 +30,42 @@ import qualified Database.PostgreSQL.LibPQ as PQ
 import Positron.Types
 import Positron.Parser
 
+data ConnConf = ConnConf
+    { dbHost :: Maybe Text
+    , dbPort :: Maybe Word16
+    , dbName :: Maybe Text
+    , dbUser :: Maybe Text
+    , dbPassword :: Maybe Text
+    }
+
+defaultConnConf :: ConnConf
+defaultConnConf = ConnConf Nothing Nothing Nothing Nothing Nothing
+
+setDBHost :: ConnConf -> Maybe Text -> ConnConf
+setDBHost c x = c { dbHost = x }
+infixl 4 `setDBHost`
+
+setDBPort :: ConnConf -> Maybe Word16 -> ConnConf
+setDBPort c x = c { dbPort = x }
+infixl 4 `setDBPort`
+
+setDBName :: ConnConf -> Maybe Text -> ConnConf
+setDBName c x = c { dbName = x }
+infixl 4 `setDBName`
+
+setDBUser :: ConnConf -> Maybe Text -> ConnConf
+setDBUser c x = c { dbUser = x }
+infixl 4 `setDBUser`
+
+setDBPassword :: ConnConf -> Maybe Text -> ConnConf
+setDBPassword c x = c { dbPassword = x }
+infixl 4 `setDBPassword`
+
 connect
     :: Positron positron
-    => Maybe Text
-    -> Maybe Word16
-    -> Maybe Text
-    -> Maybe Text
-    -> Maybe Text
+    => ConnConf
     -> IO positron
-connect dbHost dbPort dbName dbUser dbPassword = do
+connect ConnConf{..} = do
     conn <- PQ.connectdb conninfo
     _ <- PQ.exec conn "SET client_min_messages TO WARNING;"
     positron <- pMake conn
@@ -58,6 +94,13 @@ connect dbHost dbPort dbName dbUser dbPassword = do
         , fmap ("user=" <>) dbUser
         , fmap ("password=" <>) dbPassword
         ]
+
+close :: Positron p => p -> IO ()
+close p = PQ.finish (pConn p)
+
+withDatabase :: Positron positron
+    => ConnConf -> (positron -> IO a) -> IO a
+withDatabase connConf = bracket (connect connConf) close
 
 execBase
     :: Positron p => p

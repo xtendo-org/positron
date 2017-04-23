@@ -15,7 +15,16 @@ module Positron
     , mkPositron
 
     , Positron
+    , ConnConf
+    , defaultConnConf
+    , setDBHost
+    , setDBPort
+    , setDBName
+    , setDBUser
+    , setDBPassword
     , connect
+    , close
+    , withDatabase
 
     , PositronError(..)
 
