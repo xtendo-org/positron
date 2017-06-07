@@ -40,6 +40,7 @@ module Positron
     , Word64
     , ByteString
     , Text
+    , UUID(..)
 
     ) where
 
@@ -51,6 +52,7 @@ import Positron.Alias
 import Positron.Driver
 import Positron.Query
 import Positron.Types
+import Positron.UUID
 import Positron.Unsafe
 import Positron.Util
 
@@ -171,6 +173,7 @@ analyze tableName (Column n t pk idx nl unique) = case t of
     Pbigserial -> ret DBbigserial
     Pvarchar len -> ret $ DBvarchar len
     Ptext -> ret DBtext
+    Puuid -> ret DBuuid
     Pforeignkey s -> do
         let
             (tn, dottedColName) = break (== '.') s

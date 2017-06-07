@@ -21,6 +21,7 @@ import qualified Database.PostgreSQL.LibPQ as PQ
 -- local modules
 
 import Positron.Driver
+import Positron.Store
 import Positron.Types
 import Positron.Unsafe
 import Positron.Util

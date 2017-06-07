@@ -15,7 +15,9 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Positron
+  exposed-modules:
+    Positron
+    Positron.UUID
   other-modules:
     Positron.Alias
     Positron.Binary
@@ -24,6 +26,7 @@ library
     Positron.Instance
     Positron.Parser
     Positron.Query
+    Positron.Store
     Positron.Types
     Positron.Types.MissingMethods
     Positron.Unsafe

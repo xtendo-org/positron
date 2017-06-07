@@ -21,6 +21,8 @@ module Positron.Types
 
 import Positron.Import
 
+import Positron.UUID
+
 import Positron.Types.MissingMethods
 
 class Positron p where
@@ -55,6 +57,7 @@ data ColumnType
     | Pvarchar Integer
     | Ptext
     | Pforeignkey String
+    | Puuid
     deriving Show
 
 data DBColumnType
@@ -70,6 +73,7 @@ data DBColumnType
     | DBbigserial
     | DBtext
     | DBvarchar Integer
+    | DBuuid
 
 instance Show DBColumnType where
     show t = case t of
@@ -85,6 +89,7 @@ instance Show DBColumnType where
         DBbigserial -> "bigserial"
         DBvarchar len -> "varchar(" ++ show len ++ ")"
         DBtext -> "text"
+        DBuuid -> "uuid"
 
 data Property
     = Primary
@@ -137,6 +142,7 @@ columnTypeCon AC{..} = constructor $ case act of
     DBbigserial -> ''Int64
     DBvarchar _ -> ''Text
     DBtext -> ''Text
+    DBuuid -> ''UUID
   where
     constructor = if acnl
         then AppT (ConT ''Maybe) . ConT

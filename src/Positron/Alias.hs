@@ -11,6 +11,7 @@ module Positron.Alias
     , varchar
     , foreignkey
     , text
+    , uuid
     , insert
     , selectModel
     , getModel
@@ -44,6 +45,8 @@ foreignkey :: String -> String -> Column
 foreignkey target = defaultColumn (Pforeignkey target)
 text :: String -> Column
 text = defaultColumn Ptext
+uuid :: String -> Column
+uuid = defaultColumn Puuid
 
 insert :: String -> Query
 insert = Insert
