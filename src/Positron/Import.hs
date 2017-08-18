@@ -11,7 +11,7 @@ module Positron.Import
 
 import Control.Concurrent.MVar as Module
 import Control.Monad as Module
-import Control.Exception as Module
+import Control.Exception as Module hiding (interruptible)
 import Data.Bits as Module
 import Data.Char as Module
 import Data.Foldable as Module
