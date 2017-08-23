@@ -158,6 +158,7 @@ data PositronError
 
 data Query
     = Insert String
+    | Upsert String
     | Select
         { selectTarget :: SelectTarget
         , selectConditions :: [Condition]

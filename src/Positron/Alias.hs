@@ -13,6 +13,7 @@ module Positron.Alias
     , text
     , uuid
     , insert
+    , upsert
     , selectModel
     , getModel
     , update
@@ -50,6 +51,9 @@ uuid = defaultColumn Puuid
 
 insert :: String -> Query
 insert = Insert
+
+upsert :: String -> Query
+upsert = Upsert
 
 selectModel :: String -> Query
 selectModel name = Select (SelectModel name) []

@@ -35,6 +35,7 @@ queryUpsert = queryUpsertBase True
 query :: String -> Query -> Q [Dec]
 query funcStr = \case
     Insert tableStr -> prepareXxsert False funcStr tableStr
+    Upsert tableStr -> prepareXxsert True funcStr tableStr
     Select (SelectModel tableStr) conds ->
         prepareSelectModel funcStr tableStr conds
     GetModel tableStr -> getTable tableStr >>= prepareGet funcStr tableStr
