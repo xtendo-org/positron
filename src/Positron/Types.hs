@@ -12,11 +12,13 @@ module Positron.Types
     , Query(..)
     , SelectTarget(..)
     , whose
+    , orderBy
     , Parameter(..)
     , Condition(..)
     , (.==)
     , SetValue(..)
     , (?=)
+    , OrderBy(..)
     ) where
 
 import Positron.Import
@@ -162,8 +164,12 @@ data Query
     | Select
         { selectTarget :: SelectTarget
         , selectConditions :: [Condition]
+        , selectOrderBys :: [OrderBy]
         }
-    | GetModel String
+    | GetModel
+        { getModelTarget :: String
+        , getModelOrderBys :: [OrderBy]
+        }
     | Update
         { updateTable :: String
         , updateColumns :: [SetValue]
@@ -176,14 +182,22 @@ data SelectTarget
     | SelectFields [String]
     deriving Show
 
--- This function may look like it has runtime errors, but it is in fact only
+-- These functions may look like they have runtime errors, but in fact only
 -- used in the Template Haskell stage. All errors are therefore compile-time.
 whose :: Query -> [Condition] -> Query
 whose q conds = case q of
     Insert name -> error (name ++ ": Insert cannot have conditions")
+    Upsert name -> error (name ++ ": Insert cannot have conditions")
     s@Select {} -> s { selectConditions = selectConditions s ++ conds }
-    GetModel name -> error (name ++ ": GetModel cannot have conditions")
+    GetModel{..} -> error
+        (getModelTarget ++ ": GetModel cannot have conditions")
     u@Update {} -> u { updateConditions = updateConditions u ++ conds }
+
+orderBy :: Query -> [OrderBy] -> Query
+orderBy q orderBys = case q of
+    s@Select {} -> s { selectOrderBys = selectOrderBys s ++ orderBys }
+    g@GetModel {} -> g { getModelOrderBys = getModelOrderBys g ++ orderBys }
+    _ -> error "only select query can have \"order by\" clause"
 
 data Condition = Condition String Parameter
     deriving Show
@@ -196,3 +210,6 @@ newtype SetValue = SetValue { unSetValue :: Condition }
 
 (?=) :: String -> Parameter -> SetValue
 name ?= parameter = SetValue (Condition name parameter)
+
+data OrderBy = Asc String | Desc String
+    deriving Show

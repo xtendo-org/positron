@@ -10,6 +10,8 @@ module Positron
     , (?=)
     , whose
     , Parameter(..)
+    , orderBy
+    , OrderBy(..)
     , module Positron.Alias
     , module Positron.Query
     , mkPositron

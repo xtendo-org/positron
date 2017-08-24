@@ -36,10 +36,10 @@ query :: String -> Query -> Q [Dec]
 query funcStr = \case
     Insert tableStr -> prepareXxsert False funcStr tableStr
     Upsert tableStr -> prepareXxsert True funcStr tableStr
-    Select (SelectModel tableStr) conds ->
-        prepareSelectModel funcStr tableStr conds
-    GetModel tableStr -> getTable tableStr >>= prepareGet funcStr tableStr
-    Select (SelectFields _) _ -> error
+    Select (SelectModel tableStr) conds orderBys ->
+        prepareSelectModel funcStr tableStr conds orderBys False
+    GetModel tableStr orderBys -> prepareGet funcStr tableStr orderBys
+    Select (SelectFields _) _ _ -> error
         "selecting fields is not implemented yet"
     Update tableStr setValues conds -> getTable tableStr >>=
         prepareUpdate funcStr tableStr setValues conds
@@ -99,88 +99,15 @@ prepareUpdate funcStr tableStr setValues conds table =
     setValueConds = map unSetValue setValues
     params = getParamColumns table (setValueConds ++ conds)
 
-prepareGet :: String -> String -> Table -> Q [Dec]
-prepareGet funcStr tableStr table = do
-    preparedName <- getPreparedName funcStr
-    addPrepared (preparedName, queryStr)
+prepareGet :: String -> String -> [OrderBy] -> Q [Dec]
+prepareGet funcStr tableStr orderBys = do
+    columns <- fmap (map snd) $ getTable tableStr
+    let pkConds = map ((`Condition` Parameter) . acn) $ filter acp columns
+    prepareSelectModel funcStr tableStr pkConds orderBys True
 
-    -- construct AST for this function
-    -- positronArg: The argument of the type "Positron"
-    positronArg <- newName "_positron"
-    -- keyTHArgs: The arguments that are used in the "where" clause
-    keyTHArgs <- forM primaryKeys $ \ ac -> do
-        thName <- newName $ "_" <> acn ac
-        return (thName, ac)
-    -- encodedArgs: All function arguments that are converted into
-    -- "Maybe ByteString" so that they can be passed to unsafeExecPrepared
-    -- immediately.
-    let encodedArgs = ListE $ map argumentAST keyTHArgs
-
-    -- execResult: The name to bind the execPrepared result
-    execResultName <- newName "execResult"
-    let execResult = return $ VarE execResultName
-
-    -- typeSignature: The type signature of the resulting function.
-    -- For example,
-    -- "Positron p => p -> Int64 -> IO (Either PositronError [MyModel])"
-    typeSignature <- let
-        applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t primaryKeyCons
-        returnValueType = [t| IO (Maybe $(r (ConT tableName))) |]
-        in positronContext . applyArgs <$> returnValueType
-
-    bindPairs <- forM (zip [0 :: Int16 ..] columns) $ \ (i, AC{..}) -> do
-        fieldName <- newName acn
-        unstoreExp <- let msg = "NOT NULL field is NULL: " <> acn in if acnl
-            then [| fmap binaryUnstore |]
-            else [| binaryUnstore . fromMaybe (error msg) |]
-        getvalueExp <- [| fmap $(r unstoreExp)
-            (PQ.getvalue $(execResult) 0 i) |]
-        return (fieldName, getvalueExp)
-
-    resultExp <- do
-        prefix <- [| return . Just |]
-        return $ NoBindS $ AppE prefix $ foldl' (\ x y -> AppE x (VarE y))
-            (ConE tableName) (map fst bindPairs)
-
-    doExp <- [| do
-        $(r (VarP execResultName)) <- unsafeExecPrepared
-            $(r $ VarE positronArg) preparedName $(r encodedArgs)
-                >>= either (fail . show) return
-        ntuples <- PQ.ntuples $(execResult)
-        if ntuples > 0
-            then $(return $ DoE $
-                [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
-            else return Nothing
-        |]
-
-    return
-        [ SigD funcName typeSignature
-        , FunD funcName
-            [ Clause (VarP positronArg : map (VarP . fst) keyTHArgs)
-                (NormalB doExp) []
-            ]
-        ]
-
-  where
-    funcName = mkName funcStr
-    tableName = mkName tableStr
-    columns = map snd table
-    primaryKeys = filter acp columns
-    primaryKeyCons = map columnTypeCon primaryKeys
-    queryStr = toByteString $ fold
-        [ "select "
-        , fold $ intersperse ", " $ map (B.string7 . snake . acn) columns
-        , " from "
-        , B.string7 $ snake $ decap tableStr
-        , " where "
-        , fold $ intersperse "," $ for (zip [1 ..] primaryKeys) $ \ (i, pk) ->
-            B.string7 (acn pk) <> " = $" <> B.word16Dec i
-        , ";"
-        ]
-    r = return
-
-prepareSelectModel :: String -> String -> [Condition] -> Q [Dec]
-prepareSelectModel funcStr tableStr conds = do
+prepareSelectModel
+    :: String -> String -> [Condition] -> [OrderBy] -> Bool -> Q [Dec]
+prepareSelectModel funcStr tableStr conds orderBys oneRow = do
     -- TODO: support column selection
     table <- getTable tableStr
     let
@@ -195,6 +122,11 @@ prepareSelectModel funcStr tableStr conds = do
             , B.string7 $ snake $ decap tableStr
             , if not (null conds) then
                 " where " <> fold (intersperse " and " $ condBuilder 1 conds)
+              else mempty
+            , if not (null orderBys) then let
+                f (Asc name) = B.string7 name <> " asc"
+                f (Desc name) = B.string7 name <> " desc"
+                in " order by " <> fold (intersperse ", " $ map f orderBys)
               else mempty
             , ";"
             ]
@@ -225,11 +157,13 @@ prepareSelectModel funcStr tableStr conds = do
     typeSignature <- let
         argTypes = map columnTypeCon params
         applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t argTypes
-        returnValueType = [t| IO [$(r (ConT tableName))] |]
+        returnValueType = if oneRow
+            then [t| IO (Maybe $(r (ConT tableName))) |]
+            else [t| IO [$(r (ConT tableName))] |]
         in positronContext . applyArgs <$> returnValueType
 
     rowIndexName <- newName "rowIndex"
-    let rowIndex = return $ VarE rowIndexName
+    let rowIndex = if oneRow then [| 0 |] else return $ VarE rowIndexName
 
     -- bindPairs: pairs of binding for each field in one row.
     -- For example, "c1 <- dbUnstore <$> PQ.getvalue' result 0 1"
@@ -237,27 +171,48 @@ prepareSelectModel funcStr tableStr conds = do
         fname <- newName acn
         unstoreExp <- if acnl
             then [| fmap binaryUnstore |]
-            else [| binaryUnstore . fromMaybe (error "NOT NULL field is NULL") |]
+            else [| binaryUnstore . fromMaybe (error msgNull) |]
         getvalueExp <- [| fmap $(r unstoreExp)
             (PQ.getvalue' $(execResult) $(rowIndex) i) |]
         return (fname, getvalueExp)
-    -- oneRowResultExp: The final line of oneRowGetter's do notation.
 
+    ntuples <- newName "ntuples"
     let
-        oneRowResultExp = NoBindS $ AppE (VarE 'return) $
-            foldl' (\ x y -> AppE x (VarE y)) (ConE tableName) $
-            map fst bindPairs
-        oneRowGetterAST = LamE [VarP rowIndexName] $ DoE $
-            [BindS (VarP x) y | (x, y) <- bindPairs] ++ [oneRowResultExp]
+        ntuplesP = return $ VarP ntuples
+        ntuplesE = return $ VarE ntuples
+
+    -- When "oneRow" is true, the select query must return a "Maybe x"
+    -- Otherwise, it must return a "[x]"
+    resultProcessingAST <- if oneRow
+        then do
+            resultExp <- do
+                prefix <- [| return . Just |]
+                return $ NoBindS $ AppE prefix $
+                    foldl' (\ x y -> AppE x (VarE y)) (ConE tableName)
+                        (map fst bindPairs)
+            [| if $(ntuplesE)  > 0
+                then $(return $ DoE $
+                    [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
+                else return Nothing
+                |]
+        else let
+            oneRowResultExp = NoBindS $ AppE (VarE 'return) $
+                foldl' (\ x y -> AppE x (VarE y)) (ConE tableName) $
+                map fst bindPairs
+            oneRowGetterAST = LamE [VarP rowIndexName] $ DoE $
+                [BindS (VarP x) y | (x, y) <- bindPairs] ++ [oneRowResultExp]
+          in
+            [| if $(ntuplesE) > 0
+                then forM [0 .. $(ntuplesE) - 1] $(r oneRowGetterAST)
+                else return []
+            |]
 
     execPreparedAST <- [| do
         $(r (VarP execResultName)) <- unsafeExecPrepared
             $(r $ VarE positronArg) preparedName $(r encodedArgs)
                 >>= either (fail . show) return
-        ntuples <- PQ.ntuples $(execResult)
-        if ntuples > 0
-            then forM [0 .. ntuples - 1] $(r oneRowGetterAST)
-            else return []
+        $(ntuplesP) <- PQ.ntuples $(execResult)
+        $(r resultProcessingAST)
         |]
 
     return
@@ -566,3 +521,7 @@ getParamColumns table conds = catMaybes $ for conds $ \case
         msg = "parameter column not found: " <> fieldName
         in Just $ fromMaybe (error msg) $ lookup fieldName table
     _ -> Nothing
+
+-- messages
+msgNull :: String
+msgNull = "NOT NULL field is NULL"

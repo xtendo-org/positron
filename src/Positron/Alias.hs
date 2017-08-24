@@ -56,10 +56,10 @@ upsert :: String -> Query
 upsert = Upsert
 
 selectModel :: String -> Query
-selectModel name = Select (SelectModel name) []
+selectModel name = Select (SelectModel name) [] []
 
 getModel :: String -> Query
-getModel = GetModel
+getModel name = GetModel name []
 
 update :: String -> [SetValue] -> Query
 update name setValues = Update name setValues []
