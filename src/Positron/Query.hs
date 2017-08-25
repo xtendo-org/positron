@@ -158,8 +158,8 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
         argTypes = map columnTypeCon params
         applyArgs t = foldr (\ x y -> AppT (AppT ArrowT x) y) t argTypes
         returnValueType = if oneRow
-            then [t| IO (Maybe $(r (ConT tableName))) |]
-            else [t| IO [$(r (ConT tableName))] |]
+            then [t| IO (Maybe $(return (ConT tableName))) |]
+            else [t| IO [$(return (ConT tableName))] |]
         in positronContext . applyArgs <$> returnValueType
 
     rowIndexName <- newName "rowIndex"
@@ -172,7 +172,7 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
         unstoreExp <- if acnl
             then [| fmap binaryUnstore |]
             else [| binaryUnstore . fromMaybe (error msgNull) |]
-        getvalueExp <- [| fmap $(r unstoreExp)
+        getvalueExp <- [| fmap $(return unstoreExp)
             (PQ.getvalue' $(execResult) $(rowIndex) i) |]
         return (fname, getvalueExp)
 
@@ -203,16 +203,16 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
                 [BindS (VarP x) y | (x, y) <- bindPairs] ++ [oneRowResultExp]
           in
             [| if $(ntuplesE) > 0
-                then forM [0 .. $(ntuplesE) - 1] $(r oneRowGetterAST)
+                then forM [0 .. $(ntuplesE) - 1] $(return oneRowGetterAST)
                 else return []
             |]
 
     execPreparedAST <- [| do
-        $(r (VarP execResultName)) <- unsafeExecPrepared
-            $(r $ VarE positronArg) preparedName $(r encodedArgs)
+        $(return (VarP execResultName)) <- unsafeExecPrepared
+            $(return $ VarE positronArg) preparedName $(return encodedArgs)
                 >>= either (fail . show) return
         $(ntuplesP) <- PQ.ntuples $(execResult)
-        $(r resultProcessingAST)
+        $(return resultProcessingAST)
         |]
 
     return
@@ -227,7 +227,6 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
   where
     funcName = mkName funcStr
     tableName = mkName tableStr
-    r = return
 
 prepareXxsert :: Bool -> String -> String -> Q [Dec]
 prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
