@@ -124,9 +124,16 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
                 " where " <> fold (intersperse " and " $ condBuilder 1 conds)
               else mempty
             , if not (null orderBys) then let
-                f (Asc name) = B.string7 name <> " asc"
-                f (Desc name) = B.string7 name <> " desc"
-                in " order by " <> fold (intersperse ", " $ map f orderBys)
+                msg name = error $ fold
+                    [ "column ", name, " is not in table ", tableStr
+                    , " (", intercalate ", " $ map fst table
+                    ]
+                fLookup name = fromMaybe (msg name) $ lookup name table
+                f2 name = B.string7 (snake $ acn $ fLookup name)
+                f (Asc name) = f2 name <> " asc"
+                f (Desc name) = f2 name <> " desc"
+                in " order by " <> fold
+                    (intersperse ", " $ map f orderBys)
               else mempty
             , ";"
             ]

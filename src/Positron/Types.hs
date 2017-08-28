@@ -9,6 +9,7 @@ module Positron.Types
     , AnalyzedColumn(..)
     , columnTypeCon
     , PositronError(..)
+    , textShow
     , Query(..)
     , SelectTarget(..)
     , whose
@@ -157,6 +158,11 @@ data PositronError
         }
     | UnknownPositronError Text
     deriving Show
+
+textShow :: PositronError -> Text
+textShow (DuplicateKey k v) = fold
+    ["Value ", v, " already exists for ", k]
+textShow (UnknownPositronError t) = t
 
 data Query
     = Insert String

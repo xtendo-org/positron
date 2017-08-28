@@ -29,6 +29,7 @@ module Positron
     , withDatabase
 
     , PositronError(..)
+    , textShow
 
     -- re-export data types
     , Int16
