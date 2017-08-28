@@ -75,9 +75,7 @@ connect ConnConf{..} = do
     forM_ (pPrepareds positron) $ \ (stmtName, stmtQuery) -> let
         onError = do
             B.putStrLn stmtName
-            B.putStrLn stmtQuery
             PQ.errorMessage conn >>= maybe (return ()) B.putStrLn
-            error "PREPARE failed"
         in PQ.prepare conn stmtName stmtQuery Nothing >>= \case
             Nothing -> onError
             Just result -> PQ.resultStatus result >>= \ case
