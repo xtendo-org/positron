@@ -74,14 +74,19 @@ connect ConnConf{..} = do
         Left err -> fail ("While executing CREATE queries: " <> show err)
     forM_ (pPrepareds positron) $ \ (stmtName, stmtQuery) -> let
         onError = do
-            B.putStrLn stmtName
+            -- B.putStrLn stmtName
+            -- PQ.errorMessage conn >>= maybe (return ()) B.putStrLn
+            B.putStrLn $ fold [stmtName, " failed, deallocate and retry"]
+            PQ.exec conn ("DEALLOCATE \"" <> stmtName <> "\";")
             PQ.errorMessage conn >>= maybe (return ()) B.putStrLn
-        in PQ.prepare conn stmtName stmtQuery Nothing >>= \case
+            prepare
+        prepare = PQ.prepare conn stmtName stmtQuery Nothing >>= \ case
             Nothing -> onError
             Just result -> PQ.resultStatus result >>= \ case
                 PQ.CommandOk -> return ()
                 PQ.TuplesOk -> return ()
-                status -> print status >> onError
+                status -> onError
+        in prepare
     return positron
   where
     conninfo = B.intercalate " " $ mapMaybe (fmap T.encodeUtf8) sources
