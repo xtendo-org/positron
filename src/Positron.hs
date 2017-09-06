@@ -12,6 +12,7 @@ module Positron
     , Parameter(..)
     , orderBy
     , OrderBy(..)
+    , onConflict
     , module Positron.Alias
     , module Positron.Query
     , mkPositron

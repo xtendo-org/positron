@@ -20,6 +20,7 @@ module Positron.Types
     , SetValue(..)
     , (?=)
     , OrderBy(..)
+    , onConflict
     ) where
 
 import Positron.Import
@@ -186,6 +187,13 @@ data Query
         }
     deriving Show
 
+queryTypeStr :: Query -> String
+queryTypeStr Insert {} = "Insert"
+queryTypeStr Upsert {} = "Upsert"
+queryTypeStr Select {} = "Select"
+queryTypeStr GetModel {} = "GetModel"
+queryTypeStr Update {} = "Update"
+
 data SelectTarget
     = SelectModel String
     | SelectFields [String]
@@ -222,3 +230,9 @@ name ?= parameter = SetValue (Condition name parameter)
 
 data OrderBy = Asc String | Desc String
     deriving Show
+
+onConflict :: Query -> (NonEmpty String, NonEmpty String) -> Query
+onConflict q params = case q of
+    i@Insert {} -> i { insertOnConflict = Just params }
+    x -> error (queryTypeStr x <> " cannot have ON CONFLICT")
+
