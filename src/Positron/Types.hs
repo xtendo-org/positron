@@ -165,7 +165,10 @@ textShow (DuplicateKey k v) = fold
 textShow (UnknownPositronError t) = t
 
 data Query
-    = Insert String
+    = Insert
+        { insertTarget :: String
+        , insertOnConflict :: Maybe (NonEmpty String, NonEmpty String)
+        }
     | Upsert String
     | Select
         { selectTarget :: SelectTarget
@@ -192,7 +195,7 @@ data SelectTarget
 -- used in the Template Haskell stage. All errors are therefore compile-time.
 whose :: Query -> [Condition] -> Query
 whose q conds = case q of
-    Insert name -> error (name ++ ": Insert cannot have conditions")
+    Insert name _ -> error (name ++ ": Insert cannot have conditions")
     Upsert name -> error (name ++ ": Insert cannot have conditions")
     s@Select {} -> s { selectConditions = selectConditions s ++ conds }
     GetModel{..} -> error

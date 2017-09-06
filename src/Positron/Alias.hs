@@ -50,7 +50,7 @@ uuid :: String -> Column
 uuid = defaultColumn Puuid
 
 insert :: String -> Query
-insert = Insert
+insert n = Insert n Nothing
 
 upsert :: String -> Query
 upsert = Upsert

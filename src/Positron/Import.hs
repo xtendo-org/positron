@@ -10,14 +10,15 @@ module Positron.Import
     ) where
 
 import Control.Concurrent.MVar as Module
-import Control.Monad as Module
 import Control.Exception as Module hiding (interruptible)
+import Control.Monad as Module
 import Data.Bits as Module
 import Data.Char as Module
 import Data.Foldable as Module
 import Data.IORef as Module
 import Data.Int as Module
 import Data.List as Module
+import Data.List.NonEmpty as Module (NonEmpty(..))
 import Data.Maybe as Module
 import Data.Monoid as Module
 import Data.Scientific as Module

@@ -34,8 +34,10 @@ queryUpsert = queryUpsertBase True
 
 query :: String -> Query -> Q [Dec]
 query funcStr = \case
-    Insert tableStr -> prepareXxsert False funcStr tableStr
-    Upsert tableStr -> prepareXxsert True funcStr tableStr
+    Insert tableStr conflict -> getTable tableStr >>=
+        prepareXxsert False conflict funcStr tableStr
+    Upsert tableStr -> getTable tableStr >>=
+        prepareXxsert True Nothing funcStr tableStr
     Select (SelectModel tableStr) conds orderBys ->
         prepareSelectModel funcStr tableStr conds orderBys False
     GetModel tableStr orderBys -> prepareGet funcStr tableStr orderBys
@@ -235,41 +237,11 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
     funcName = mkName funcStr
     tableName = mkName tableStr
 
-prepareXxsert :: Bool -> String -> String -> Q [Dec]
-prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
-    let
-        (table, serialPairs) = partition (not . isSerial . snd) rawTable
-        columns = map snd table
-        serials = map snd serialPairs
-        allPKNames = fold $ intersperse ", " $
-            map (B.string7 . snake . acn) $ filter acp columns
-        columnNames = map (snake . fst) table
-        queryStr = toByteString $ fold
-            [ "insert into ", B.string7 $ snake $ decap tableStr, " ("
-            , fold $ B.string7 <$> intersperse ", " columnNames
-            , ") values ("
-            , fold $ intersperse ", " $ map ("$" <>)
-                [B.intDec x | x <- [1 .. length columnNames]]
-            , ")"
-            , if isUpsert then fold
-                [ " ON CONFLICT ("
-                , allPKNames
-                , ") DO UPDATE SET "
-                , fold $ intersperse ", " $ map
-                    ((\ name -> fold [name, " = EXCLUDED.", name])
-                        . B.string7)
-                    columnNames
-                ]
-              else mempty
-            , if null serialPairs
-                then mempty
-                else (" returning " <>) $ fold $ intersperse ", " $
-                    map (B.string7 . fst) serialPairs
-            , ";"
-            ]
-    -- Register the prepared name and statement to the global store
-    preparedName <- getPreparedName funcStr
-    addPrepared (preparedName, queryStr)
+prepareXxsert
+    :: Bool -> Maybe (NonEmpty String, NonEmpty String)
+    -> String -> String -> Table -> Q [Dec]
+prepareXxsert isUpsert conflict funcStr tableStr rawTable = do
+  mkPrepare funcStr queryStr $ \ positronArg preparedName -> do
 
     -- Build AST for the query function
     -- columnTHArgs: The arguments that will appear on the left side and the
@@ -280,16 +252,17 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
     -- encodedArgs: The list of arguments for the prepared statement.
     -- Its type is [Maybe ByteString].
     let encodedArgs = ListE $ map argumentAST columnTHArgs
-    -- positronArg: The argument of the type "Positron"
-    positronArg <- newName "_positron"
 
-    execResultName <- newName "execResult"
-    let execResult = return $ VarE execResultName
+    execResult <- VarE <$> newName "execResult"
 
-    resultTypeSignature <- let
+    typeSignature <- let
         serialsType = return $ foldl AppT (TupleT $ length serials) $
             map columnTypeCon serials
-        in [t| IO (Either PositronError $(serialsType)) |]
+        in do
+            result <- [t| IO (Either PositronError $(serialsType)) |]
+            return $
+                foldr ((\ x y -> AppT (AppT ArrowT x) y) . columnTypeCon)
+                result columns
 
     bindPairs <- forM (zip [0 :: Word16 ..] serials) $ \ (i, AC{..}) -> do
         fieldName <- newName acn
@@ -297,7 +270,7 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
             then [| fmap binaryUnstore |]
             else [| binaryUnstore . fromMaybe (error msg) |]
         getvalueExp <- [| fmap $(return unstoreExp)
-            (PQ.getvalue $(execResult) 0 i) |]
+            (PQ.getvalue $(return execResult) 0 i) |]
         return (fieldName, getvalueExp)
     let
         resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Right) $
@@ -310,25 +283,47 @@ prepareXxsert isUpsert funcStr tableStr = withTable $ \ rawTable -> do
             Right _ -> $(return $ DoE $
                 [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
         |]
-    return
-        [ SigD funcName $ positronContext $
-            foldr ((\ x y -> AppT (AppT ArrowT x) y) . columnTypeCon)
-                resultTypeSignature columns
-        , FunD funcName
-            [ Clause
-                (VarP positronArg : map (VarP . fst) columnTHArgs)
-                (NormalB mainContentExp)
-                []
-            ]
-        ]
+
+    return  (typeSignature, map (VarP . fst) columnTHArgs, mainContentExp)
+
   where
-    funcName = mkName funcStr
-    withTable f = getTable tableStr >>= f
     isSerial AC{..} = case act of
         DBsmallserial -> True
         DBserial -> True
         DBbigserial -> True
         _ -> False
+
+    (table, serialPairs) = partition (not . isSerial . snd) rawTable
+    columns = map snd table
+    serials = map snd serialPairs
+    allPKNames =  map acn $ filter acp columns
+    columnNames = map (snake . fst) table
+    queryStr = toByteString $ fold
+        [ "insert into ", B.string7 $ snake $ decap tableStr, " ("
+        , fold $ B.string7 <$> intersperse ", " columnNames
+        , ") values ("
+        , fold $ intersperse ", " $ map ("$" <>)
+            [B.intDec x | x <- [1 .. length columnNames]]
+        , ")"
+        , if isUpsert then conflictClause allPKNames columnNames
+          else case conflict of
+            Nothing -> mempty
+            Just (conflictCols, updateCols) ->
+                conflictClause (toList conflictCols) (toList updateCols)
+        , if null serialPairs
+            then mempty
+            else (" returning " <>) $ fold $ intersperse ", " $
+                map (B.string7 . fst) serialPairs
+        , ";"
+        ]
+    conflictClause conflictCols updateCols = fold
+        [ " ON CONFLICT ("
+        , fold $ intersperse ", " $ map (B.string7 . snake) conflictCols
+        , ") DO UPDATE SET "
+        , fold $ intersperse ", " $ map
+            ((\ name -> fold [name, " = EXCLUDED.", name]) . B.string7)
+            updateCols
+        ]
 
 queryUpsertBase :: Bool -> String -> String -> Q [Dec]
 queryUpsertBase upsert queryStr tableName = getTable tableName >>=
