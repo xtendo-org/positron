@@ -34,10 +34,10 @@ queryUpsert = queryUpsertBase True
 
 query :: String -> Query -> Q [Dec]
 query funcStr = \case
-    Insert tableStr conflict -> getTable tableStr >>=
-        prepareXxsert False conflict funcStr tableStr
+    Insert tableStr conflict returningCols -> getTable tableStr >>=
+        prepareXxsert False conflict returningCols funcStr tableStr
     Upsert tableStr -> getTable tableStr >>=
-        prepareXxsert True Nothing funcStr tableStr
+        prepareXxsert True Nothing [] funcStr tableStr
     Select (SelectModel tableStr) conds orderBys ->
         prepareSelectModel funcStr tableStr conds orderBys False
     GetModel tableStr orderBys -> prepareGet funcStr tableStr orderBys
@@ -238,9 +238,9 @@ prepareSelectModel funcStr tableStr conds orderBys oneRow = do
     tableName = mkName tableStr
 
 prepareXxsert
-    :: Bool -> Maybe (NonEmpty String, NonEmpty String)
+    :: Bool -> Maybe (NonEmpty String, NonEmpty String) -> [String]
     -> String -> String -> Table -> Q [Dec]
-prepareXxsert isUpsert conflict funcStr tableStr rawTable = do
+prepareXxsert isUpsert conflict returningCols funcStr tableStr rawTable = do
   mkPrepare funcStr queryStr $ \ positronArg preparedName -> do
 
     -- Build AST for the query function
@@ -253,34 +253,39 @@ prepareXxsert isUpsert conflict funcStr tableStr rawTable = do
     -- Its type is [Maybe ByteString].
     let encodedArgs = ListE $ map argumentAST columnTHArgs
 
-    execResult <- VarE <$> newName "execResult"
+    execResult <- newName "execResult"
 
     typeSignature <- let
-        serialsType = return $ foldl AppT (TupleT $ length serials) $
-            map columnTypeCon serials
+        serialsType = return $ foldl AppT (TupleT $ length resultCols) $
+            map columnTypeCon resultCols
         in do
             result <- [t| IO (Either PositronError $(serialsType)) |]
             return $
                 foldr ((\ x y -> AppT (AppT ArrowT x) y) . columnTypeCon)
                 result columns
 
-    bindPairs <- forM (zip [0 :: Word16 ..] serials) $ \ (i, AC{..}) -> do
+    bindPairs <- forM (zip [0 :: Word16 ..] resultCols) $ \ (i, AC{..}) -> do
         fieldName <- newName acn
         unstoreExp <- let msg = "NOT NULL field is NULL: " <> acn in if acnl
             then [| fmap binaryUnstore |]
             else [| binaryUnstore . fromMaybe (error msg) |]
         getvalueExp <- [| fmap $(return unstoreExp)
-            (PQ.getvalue $(return execResult) 0 i) |]
+            (PQ.getvalue $(return (VarE execResult)) 0 i) |]
         return (fieldName, getvalueExp)
     let
         resultExp = NoBindS $ AppE (VarE 'return) $ AppE (ConE 'Right) $
             TupE $ map (VarE . fst) bindPairs
+        -- When this query function has a return value (RETURNING clause), the
+        -- result needs to be bound. Otherwise, the binding will only cause
+        -- the unused binding warning. The definition below chooses
+        -- accordingly.
+        execResultBinding = if null resultCols then WildP else VarP execResult
 
     mainContentExp <- [| unsafeExecPrepared
         $(return $ VarE positronArg) preparedName
         $(return encodedArgs) >>= \case
             Left e -> return (Left e)
-            Right _ -> $(return $ DoE $
+            Right $(return execResultBinding) -> $(return $ DoE $
                 [BindS (VarP x) y | (x, y) <- bindPairs] ++ [resultExp])
         |]
 
@@ -295,7 +300,11 @@ prepareXxsert isUpsert conflict funcStr tableStr rawTable = do
 
     (table, serialPairs) = partition (not . isSerial . snd) rawTable
     columns = map snd table
-    serials = map snd serialPairs
+    resultCols = if null returningCols then map snd serialPairs
+        else let
+            force x = fromMaybe (error (msg x)) $ lookup x table
+            msg x = x <> " is not found in " <> tableStr
+        in map force returningCols
     allPKNames =  map acn $ filter acp columns
     columnNames = map (snake . fst) table
     queryStr = toByteString $ fold

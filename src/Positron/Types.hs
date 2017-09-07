@@ -21,6 +21,7 @@ module Positron.Types
     , (?=)
     , OrderBy(..)
     , onConflict
+    , returning
     ) where
 
 import Positron.Import
@@ -169,6 +170,7 @@ data Query
     = Insert
         { insertTarget :: String
         , insertOnConflict :: Maybe (NonEmpty String, NonEmpty String)
+        , insertReturning :: [String]
         }
     | Upsert String
     | Select
@@ -203,7 +205,7 @@ data SelectTarget
 -- used in the Template Haskell stage. All errors are therefore compile-time.
 whose :: Query -> [Condition] -> Query
 whose q conds = case q of
-    Insert name _ -> error (name ++ ": Insert cannot have conditions")
+    Insert name _ _ -> error (name ++ ": Insert cannot have conditions")
     Upsert name -> error (name ++ ": Insert cannot have conditions")
     s@Select {} -> s { selectConditions = selectConditions s ++ conds }
     GetModel{..} -> error
@@ -236,3 +238,7 @@ onConflict q params = case q of
     i@Insert {} -> i { insertOnConflict = Just params }
     x -> error (queryTypeStr x <> " cannot have ON CONFLICT")
 
+returning :: Query -> [String] -> Query
+returning q params = case q of
+    i@Insert {} -> i { insertReturning = params }
+    x -> error (queryTypeStr x <> " cannot have RETURNING")

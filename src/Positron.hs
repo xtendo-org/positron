@@ -13,6 +13,8 @@ module Positron
     , orderBy
     , OrderBy(..)
     , onConflict
+    , returning
+
     , module Positron.Alias
     , module Positron.Query
     , mkPositron
@@ -33,6 +35,7 @@ module Positron
     , textShow
 
     -- re-export data types
+    , NonEmpty(..)
     , Int16
     , Int32
     , Int64
