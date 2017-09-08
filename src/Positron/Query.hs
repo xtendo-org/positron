@@ -300,12 +300,10 @@ prepareXxsert isUpsert conflict returningCols funcStr tableStr rawTable = do
 
     (table, serialPairs) = partition (not . isSerial . snd) rawTable
     columns = map snd table
+    analyze = acLookup tableStr table
     resultCols = if null returningCols then map snd serialPairs
-        else let
-            force x = fromMaybe (error (msg x)) $ lookup x table
-            msg x = x <> " is not found in " <> tableStr
-        in map force returningCols
-    allPKNames =  map acn $ filter acp columns
+        else map analyze returningCols
+    allPKs = filter acp columns
     columnNames = map (snake . fst) table
     queryStr = toByteString $ fold
         [ "insert into ", B.string7 $ snake $ decap tableStr, " ("
@@ -314,11 +312,12 @@ prepareXxsert isUpsert conflict returningCols funcStr tableStr rawTable = do
         , fold $ intersperse ", " $ map ("$" <>)
             [B.intDec x | x <- [1 .. length columnNames]]
         , ")"
-        , if isUpsert then conflictClause allPKNames columnNames
+        , if isUpsert then conflictClause allPKs columns
           else case conflict of
             Nothing -> mempty
-            Just (conflictCols, updateCols) ->
-                conflictClause (toList conflictCols) (toList updateCols)
+            Just (conflictCols, updateCols) -> conflictClause
+                (toList $ fmap analyze conflictCols)
+                (toList $ fmap analyze updateCols)
         , if null serialPairs
             then mempty
             else (" returning " <>) $ fold $ intersperse ", " $
@@ -327,10 +326,13 @@ prepareXxsert isUpsert conflict returningCols funcStr tableStr rawTable = do
         ]
     conflictClause conflictCols updateCols = fold
         [ " ON CONFLICT ("
-        , fold $ intersperse ", " $ map (B.string7 . snake) conflictCols
+        , fold $ intersperse ", " $
+            map (B.string7 . snake . acn) conflictCols
         , ") DO UPDATE SET "
         , fold $ intersperse ", " $ map
-            ((\ name -> fold [name, " = EXCLUDED.", name]) . B.string7)
+            ( (\ name -> fold [name, " = EXCLUDED.", name])
+            . B.string7 . snake . acn
+            )
             updateCols
         ]
 

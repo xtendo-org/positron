@@ -7,6 +7,7 @@ module Positron.Unsafe
     , getCurrentTableMap
     , addPrepared
     , readPrepared
+    , acLookup
     ) where
 
 import Positron.Import
@@ -64,3 +65,9 @@ addPrepared pair = runIO $ modifyIORef prepareds (pair :)
 
 readPrepared :: IO [(ByteString, ByteString)]
 readPrepared = readIORef prepareds
+
+acLookup :: String -> Table -> String -> AnalyzedColumn
+acLookup tableName table x = fromMaybe (error msg) $ lookup x table
+  where
+    msg = x <> " is not found in " <> tableName
+
