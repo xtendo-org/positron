@@ -6,7 +6,7 @@ category: Database
 author: XT
 maintainer: e@xtendo.org
 copyright: 2016 XT
-license: BSD3
+license: Apache-2.0
 github: xtendo-org/positron
 
 default-extensions:
