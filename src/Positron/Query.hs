@@ -318,10 +318,10 @@ prepareXxsert isUpsert conflict returningCols funcStr tableStr rawTable = do
             Just (conflictCols, updateCols) -> conflictClause
                 (toList $ fmap analyze conflictCols)
                 (toList $ fmap analyze updateCols)
-        , if null serialPairs
+        , if null resultCols
             then mempty
-            else (" returning " <>) $ fold $ intersperse ", " $
-                map (B.string7 . fst) serialPairs
+            else (" RETURNING " <>) $ fold $ intersperse ", " $
+                map (B.string7 . snake . acn) resultCols
         , ";"
         ]
     conflictClause conflictCols updateCols = fold

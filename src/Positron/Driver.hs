@@ -150,8 +150,4 @@ unsafeExec
 unsafeExec positron stmt = execBase positron stmt (`PQ.exec` stmt)
 
 withLock :: MVar () -> IO a -> IO a
-withLock lock action = do
-    takeMVar lock
-    value <- action
-    putMVar lock ()
-    return value
+withLock lock action = bracket (takeMVar lock) (putMVar lock) (const action)
