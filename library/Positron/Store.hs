@@ -22,6 +22,10 @@ class DBStorable c where
     dbStore :: c -> Builder
     dbUnstore :: ByteString -> c
 
+instance DBStorable Bool where
+    dbStore True = B.string7 "TRUE"
+    dbStore False = B.string7 "FALSE"
+    dbUnstore b = B.last b /= '\NUL'
 instance DBStorable Int16 where
     dbStore = B.int16Dec
     dbUnstore = decimal
@@ -44,6 +48,9 @@ class BinaryStorable c where
     binaryStore :: c -> ByteString
     binaryUnstore :: ByteString -> c
 
+instance BinaryStorable Bool where
+    binaryStore x = toByteString (B.char7 (if x then '\SOH' else '\NUL'))
+    binaryUnstore = (/= '\NUL') . B.last
 instance BinaryStorable Int16 where
     binaryStore = toByteString . B.int16BE
     binaryUnstore = unsafeDecode

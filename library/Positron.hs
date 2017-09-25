@@ -168,6 +168,7 @@ model tableName plainColumns = do
 
 analyze :: String -> Column -> Q AnalyzedColumn
 analyze tableName (Column n t pk idx nl unique) = case t of
+    Pbool -> ret DBbool
     Psmallint -> ret DBsmallint
     Pinteger -> ret DBinteger
     Pbigint -> ret DBbigint

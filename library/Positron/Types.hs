@@ -49,7 +49,8 @@ data Column = Column
     } deriving Show
 
 data ColumnType
-    = Psmallint
+    = Pbool
+    | Psmallint
     | Pinteger
     | Pbigint
     | Pdecimal
@@ -66,7 +67,8 @@ data ColumnType
     deriving Show
 
 data DBColumnType
-    = DBsmallint
+    = DBbool
+    | DBsmallint
     | DBinteger
     | DBbigint
     | DBdecimal
@@ -82,6 +84,7 @@ data DBColumnType
 
 instance Show DBColumnType where
     show t = case t of
+        DBbool -> "bool"
         DBsmallint -> "smallint"
         DBinteger -> "integer"
         DBbigint -> "bigint"
@@ -135,6 +138,7 @@ data AnalyzedColumn = AC
 
 columnTypeCon :: AnalyzedColumn -> Type
 columnTypeCon AC{..} = constructor $ case act of
+    DBbool -> ''Bool
     DBsmallint -> ''Int16
     DBinteger -> ''Int32
     DBbigint -> ''Int64

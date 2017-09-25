@@ -1,5 +1,6 @@
 module Positron.Alias
-    ( smallint
+    ( bool
+    , smallint
     , integer
     , bigint
     , decimal
@@ -22,6 +23,8 @@ module Positron.Alias
 
 import Positron.Types
 
+bool :: String -> Column
+bool = defaultColumn Pbool
 smallint :: String -> Column
 smallint = defaultColumn Psmallint
 integer :: String -> Column
