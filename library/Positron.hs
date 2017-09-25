@@ -144,9 +144,7 @@ model tableName plainColumns = do
     let
         recs = for columns $ \ac@AC{..} ->
             ( mkName acFullName
-            , Bang
-                (if acnl then NoSourceUnpackedness else SourceUnpack)
-                SourceStrict
+            , Bang NoSourceUnpackedness SourceStrict
             , columnTypeCon ac
             )
 
