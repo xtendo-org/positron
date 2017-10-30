@@ -159,7 +159,7 @@ model tableName plainColumns = do
 
     return $
         DataD [] dataName [] Nothing [RecC dataName recs]
-            [DerivClause Nothing [ConT ''Eq, ConT ''Show]]
+            [ConT ''Eq, ConT ''Show]
         : condDecs
   where
     dataName = mkName tableName
